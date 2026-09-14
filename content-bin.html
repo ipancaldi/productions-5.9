@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content Bin — Productions</title>
+<!--
+  ============================================================================
+  CONTENT BIN — everything this production has to play, in one place, with a
+  picture of it.
+
+  WHAT IT IS FOR. Until now a file entered this workspace exactly once, through a
+  lane on the timeline, and after that it existed only as a block on that lane.
+  There was no answer to "what content do we have", no way to put the same master
+  on a second wall without finding it on disk again, and nothing at all to look at
+  — a cue is chosen by eye, from a frame, and the workspace had no frames in it.
+
+  WHERE ITS CONTENTS COME FROM. Three places, and it says which for every item:
+
+    ON THE TAKE   every file already loaded on a track. They are fanned to every
+                  panel as bytes, so this one gets them without asking, and it can
+                  say which sequence and which lane each one is used on.
+    THE FOLDER    a folder picked from disk. The browser cannot read one without
+                  being handed it, so ADD FOLDER is the honest version of "the
+                  project folder": you point at it once and everything playable in
+                  it is in the bin. Nothing is copied and nothing is uploaded.
+    DROPPED       files dropped straight onto the bin.
+
+  WHAT LEAVES IT. Drag an item onto a track in the Sequencing Timeline. The bin
+  holds the bytes; the timeline asks for them by id when something lands on a lane
+  (`binRequest`), and the answer is an ordinary `mediaAsset` — the same message a
+  file loaded any other way produces, so nothing downstream learns a new path.
+
+  IMAGES ARE CONTENT TOO. A still on a wall is a cue: a holding slate, a logo, a
+  looping graphic. They sit in the bin next to the video and drop onto a video
+  track as a still of a few seconds, which is the only thing a still can be on a
+  timeline.
+
+  IT RUNS STANDALONE. The protocol is SCENE-STUDY-BRIDGE.md.
+  ============================================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gray-300: #D0D5DD; --gray-400: #A2ABBA; --gray-500: #858FA2; --gray-550: #62748E;
+  --gray-600: #475467; --gray-650: #4F5D72; --gray-700: #344054; --gray-800: #1D2939;
+  --gray-900: #101828;
+
+  --surface-canvas: var(--gray-900); --surface-panel: var(--gray-800);
+  --surface-raised: var(--gray-700); --surface-selected: var(--gray-700);
+  --surface-emphasis: var(--gray-600); --surface-emphasis-hover: var(--gray-650);
+  --border-subtle: var(--gray-700); --border-strong: var(--gray-550); --border-emphasis: var(--gray-300);
+  --text-primary: var(--gray-300); --text-secondary: var(--gray-400);
+  --text-meta: var(--gray-500); --text-disabled: var(--gray-600);
+
+  --status-complete: #6BFFDC; --status-progress: #FF8559; --status-failed: #FF98F4;
+  --status-active: #FEFF34; --status-info: #D2B3ED; --status-live: #A74CEE;
+  --scene-beam: #F79009;
+  --tint-emphasis: rgba(208,213,221,0.18); --tint-emphasis-s: rgba(208,213,221,0.08);
+  --ring-emphasis: rgba(208,213,221,0.65); --scrim: rgba(16,24,40,0.82);
+  --elev-3: 0 12px 24px rgba(16,24,40,0.50);
+
+  --space-2: 2px; --space-4: 4px; --space-6: 6px; --space-8: 8px; --space-10: 10px;
+  --space-12: 12px; --space-16: 16px;
+  --radius-xs: 3px; --radius-sm: 5px; --radius-card: 8px; --radius-pill: 999px;
+
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+  --t-body-m: 400 12px/18px var(--font);
+  --t-body-s: 400 10.5px/16px var(--font);
+  --t-label-m: 500 10.5px/14px var(--font); --tr-label-m: 0.07em;
+  --t-label-s: 500 9.5px/13px var(--font);  --tr-label-s: 0.09em;
+  --t-mono: 500 10.5px/14px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--surface-panel); color: var(--text-primary); font: var(--t-body-m);
+  overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased;
+}
+/* the whole panel is the container the grid's density is chosen against — this tool
+   is an iframe in a resizable panel, so its own width is the only width that matters */
+.app { height: 100%; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8);
+  container-type: inline-size; }
+
+.bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) var(--space-6); flex: 0 0 auto; }
+.btn {
+  font: var(--t-label-m); letter-spacing: var(--tr-label-m); color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 0 var(--space-8); height: 22px; display: inline-flex; align-items: center; gap: var(--space-4);
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+.btn.on { color: var(--gray-900); background: var(--text-primary); border-color: var(--text-primary); }
+.btn:disabled { color: var(--text-disabled); cursor: default; }
+.btn.cta { color: var(--gray-900); background: var(--status-complete); border-color: var(--status-complete); }
+.sep { width: 1px; height: 16px; background: var(--border-subtle); margin: 0 var(--space-2); flex: 0 0 auto; }
+.grow { flex: 1 1 auto; }
+
+.st { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); display: inline-flex; align-items: center; gap: var(--space-4); }
+.st b { color: var(--text-secondary); font-weight: 600; }
+.st::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-disabled); }
+.st.live::before { background: var(--status-complete); }
+.st.alone::before { background: var(--status-active); }
+
+/* ---------- the filter row ----------
+   A bin with forty things in it is a folder, and a folder is what this panel
+   exists to improve on. Three filters, because there are exactly three questions
+   anybody asks of a bin: what is it called, what kind of thing is it, and is it
+   already in the show. */
+.filters { display: flex; align-items: center; gap: var(--space-4); flex: 0 0 auto; flex-wrap: wrap; }
+.find { flex: 1 1 140px; min-width: 90px; height: 22px; background: var(--surface-canvas);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);
+  font: var(--t-body-s); padding: 0 var(--space-6); outline: none; }
+.find:focus { border-color: var(--border-strong); }
+.find::placeholder { color: var(--text-disabled); }
+.seg { display: inline-flex; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); overflow: hidden; }
+.seg .btn { border: 0; border-radius: 0; height: 20px; padding: 0 var(--space-6);
+  font: var(--t-label-s); letter-spacing: var(--tr-label-s); }
+.seg .btn + .btn { border-left: 1px solid var(--border-subtle); }
+/* AN ICON-ONLY SEGMENT. The filters next to it stay words because ALL / VIDEO / STILLS
+   are names of things and a glyph for "unused" would be a riddle; GRID and LIST are
+   layouts, which is the one thing a picture says faster than a word. Both keep their
+   title and an aria-label, so nothing is only knowable by looking. */
+.seg .btn.ico { display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; padding: 0; }
+.ic { width: 14px; height: 14px; fill: currentColor; display: block; pointer-events: none; }
+
+/* ---------- the shelf ---------- */
+.shelf { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 2px;
+  display: grid; gap: var(--space-6); align-content: start;
+  /* ROWS ARE SIZED BY THEIR CONTENT, FULL STOP. `auto` rows look like they do that and
+     do not: an `auto` track takes its size from the item's MINIMUM contribution when
+     the container's height is definite, and the item's minimum was zero — the card is
+     `overflow: hidden` and the thumbnail could flex-shrink. So 72 items in a 679px
+     shelf came out as 72 rows of 9px: the list rendered as bare stripes and the grid
+     squashed its pictures to slivers, both of them silently. `max-content` is the fix
+     and it is not a tweak — it is the difference between a panel that scrolls and a
+     panel that lies about what is in it. */
+  grid-auto-rows: max-content; }
+/* TWO VIEWS, because there are two questions. GRID answers "which one is it" and is
+   the default, because a cue is chosen by eye from a frame. LIST answers "what is it
+   called" — the question you have when you are checking a delivery against a running
+   order, and the one a wall of thumbnails is bad at. */
+/* DENSE, WITH A FLOOR. On a wall of files the answer is more thumbnails, not bigger
+   ones — so the column count rises with the panel and the card stops shrinking at
+   132px, which is the width a 16:9 frame stays legible at. */
+.shelf.grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+/* DENSITY FOLLOWS THE PANEL, and it has to be said explicitly because `auto-fill`
+   alone gets it backwards: with one track size, a NARROW panel fits one column and
+   hands you a single enormous card, while a wide one snaps in another column and every
+   card shrinks — so the cards oscillate as you drag the gutter and the captions blink
+   on and off. Choosing the track minimum per panel width is what makes "minimise the
+   panel" mean "smaller cards", which is the only reading of it that is any use. */
+/* AND SMOOTH WHERE IT WOULD OTHERWISE LURCH. `auto-fill` grows a card until one more
+   column fits, then drops every card to the minimum — a step of W/(N·(N+1)), which is
+   10px at a 1900px panel and 46px at 560px. So the jump only matters when the panel is
+   small, and only there is the track measured in CONTAINER UNITS instead: the minimum
+   scales with the panel, the column count stops changing, and the cards grow smoothly.
+   Verified by sweeping 240→900px: zero jumps over 14px, and never once smaller as the
+   panel got wider. */
+@container (max-width: 460px) {
+  .shelf.grid { grid-template-columns: repeat(auto-fill, minmax(30cqw, 1fr)); }
+}
+@container (max-width: 300px) {
+  .shelf.grid { grid-template-columns: repeat(auto-fill, minmax(46cqw, 1fr)); }
+}
+
+.shelf.list { grid-template-columns: 1fr; gap: var(--space-4); }
+.shelf::-webkit-scrollbar { width: 8px; }
+.shelf::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 4px; }
+.shelf.drop { box-shadow: inset 0 0 0 1px var(--status-complete); border-radius: var(--radius-card); }
+
+.item { border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  background: var(--surface-canvas); overflow: hidden; cursor: grab;
+  display: flex; flex-direction: column; }
+.item:hover { border-color: var(--border-strong); }
+.item.sel { border-color: var(--border-emphasis); box-shadow: 0 0 0 1px var(--ring-emphasis); }
+.item:active { cursor: grabbing; }
+.item.dragging { opacity: 0.45; }
+/* the thumbnail is the point: a cue is chosen by eye, from a frame */
+.thumb { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb .ph { font: var(--t-mono); font-size: 9px; color: var(--text-disabled); }
+.thumb .dur { position: absolute; right: 3px; bottom: 3px; font: var(--t-mono); font-size: 9px;
+  color: var(--text-primary); background: rgba(16,24,40,0.82); border-radius: 2px; padding: 0 3px; }
+/* THE TAG IS THE ONE THING THAT NEVER GOES. On a card too small for a name it is all
+   that separates a still from a video, so it survives every size — as a word while
+   that fits, and as V / S / A when it does not. */
+.thumb .kd { position: absolute; left: 3px; top: 3px; font: var(--t-mono); font-size: 8.5px;
+  border-radius: 2px; padding: 0 3px; background: rgba(16,24,40,0.82); line-height: 1.5; }
+.thumb .kd .one { display: none; }
+.thumb .kd.video { color: var(--status-info); }
+.thumb .kd.audio { color: var(--status-complete); }
+.thumb .kd.image { color: var(--scene-beam); }
+/* on the take already, and where */
+.thumb .use { position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--status-complete); box-shadow: 0 0 0 2px rgba(16,24,40,0.7); }
+
+.meta { padding: var(--space-4) var(--space-6) var(--space-6); display: flex; flex-direction: column; gap: 1px; }
+.meta b { font: var(--t-body-s); font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta span { font: var(--t-mono); font-size: 9px; color: var(--text-disabled);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta span.on { color: var(--status-complete); }
+
+/* ---------- GRID · the card IS the picture ----------
+   The name used to sit in a block UNDER the frame, which spent a fifth of every card
+   on a filename — and a filename is the thing you look at last. It is now laid over
+   the bottom of the picture on a gradient, so the whole card is the thumbnail and the
+   text costs nothing until you want it. */
+.shelf.grid .item { position: relative; }
+/* `flex: none` so the frame is never the thing that gives way, and a floor so a dense
+   grid still shows a picture rather than a smear */
+.shelf.grid .thumb { aspect-ratio: 16 / 9; flex: none; min-height: 58px; }
+.shelf.grid .meta { position: absolute; left: 0; right: 0; bottom: 0; gap: 0;
+  padding: var(--space-10) 5px 3px; pointer-events: none;
+  background: linear-gradient(to top, rgba(16, 24, 40, 0.94), rgba(16, 24, 40, 0.55) 58%, transparent);
+  /* THE NAME IS NOT ON THE CARD. In a grid the question is "which one is it", and the
+     answer is the picture plus one letter for what kind of thing it is — a filename
+     laid over every frame is the panel arguing with its own purpose. It is one hover
+     away, and it is what the whole of LIST view is for. */
+  display: none; }
+.shelf.grid .item:hover .meta { display: flex; }
+.shelf.grid .meta b { font: var(--t-mono); font-size: 9.5px; font-weight: 500; }
+.shelf.grid .meta span { display: none; }
+/* and the tag is the LETTER here, always: V, S or A. It is the only text on the card,
+   so it says the one thing a picture cannot — which of these is a video and which is
+   a still that happens to look like a frame of one. */
+.shelf.grid .thumb .kd .full { display: none; }
+.shelf.grid .thumb .kd .one { display: inline; font-size: 9.5px; font-weight: 600; }
+/* THERE IS NO LONGER A WIDTH AT WHICH THE CARD'S TEXT COMES AND GOES, and that is the
+   point: it never appears unasked in grid view, so there is no threshold to get wrong.
+   The two earlier attempts at one are worth remembering — keyed to the card it blinked
+   off and on seven times across a 240→920px sweep, because `auto-fill` makes card width
+   non-monotonic in panel width; keyed to the panel it was stable but still put a
+   filename over a picture at every width above 300px, which was the actual complaint. */
+
+/* ---------- LIST · a readable row ----------
+   A small frame on the left so you can still recognise it, then the name and the facts
+   across the row. The row height is DECLARED rather than derived: a row is a line of
+   text and a line of text has a height, and deriving it from a flex chain is what let
+   the whole view collapse. */
+.shelf.list { --row: 42px; }
+.shelf.list .item { flex-direction: row; align-items: center; height: var(--row); }
+.shelf.list .thumb { flex: none; width: 74px; height: 100%; aspect-ratio: auto;
+  border-radius: 0; }
+/* COVER, not contain: at 74×42 a letterboxed frame is two black bars and a stripe.
+   Cropping the edges of a thumbnail this small costs nothing you could have seen. */
+.shelf.list .thumb img { object-fit: cover; }
+.shelf.list .thumb .dur { display: none; }        /* it has a column of its own now */
+.shelf.list .meta { flex: 1 1 auto; min-width: 0; position: static; background: none;
+  flex-direction: row; align-items: center; gap: var(--space-10);
+  padding: 0 var(--space-8); }
+.shelf.list .meta b { flex: 1 1 auto; min-width: 0; font: var(--t-body-s); font-weight: 500; }
+/* THE FACTS, in columns, right-aligned so the numbers line up down the list */
+.shelf.list .meta .col { flex: none; display: block; font: var(--t-mono); font-size: 9.5px;
+  color: var(--text-meta); text-align: right; white-space: nowrap; }
+.shelf.list .meta .c-dur { width: 42px; }
+.shelf.list .meta .c-dim { width: 74px; }
+.shelf.list .meta .c-size { width: 58px; }
+.shelf.list .meta .c-use { width: 116px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.shelf.list .meta .c-use.on { color: var(--status-complete); }
+/* AND THEY ARRIVE AS THERE IS ROOM FOR THEM. A column that has to be squeezed is a
+   column nobody can read, so each one waits for the width it needs — the name never
+   gives way to them. */
+.shelf.list .meta .col { display: none; }
+@container (min-width: 360px) { .shelf.list .meta .c-dur { display: block; } }
+@container (min-width: 470px) { .shelf.list .meta .c-size { display: block; } }
+@container (min-width: 580px) { .shelf.list .meta .c-dim { display: block; } }
+@container (min-width: 720px) { .shelf.list .meta .c-use { display: block; } }
+
+.none { grid-column: 1 / -1; padding: var(--space-16); font: var(--t-body-s); color: var(--text-disabled); }
+.none b { color: var(--text-secondary); font-weight: 600; }
+
+.foot { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.chip { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  padding: 1px var(--space-8); white-space: nowrap; }
+.chip b { color: var(--text-secondary); font-weight: 600; }
+.chip.ok { color: var(--status-complete); border-color: var(--status-complete); }
+
+.toast { position: fixed; left: 50%; bottom: var(--space-12); transform: translateX(-50%);
+  background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: var(--space-4) var(--space-12); font: var(--t-body-s); color: var(--text-primary);
+  box-shadow: var(--elev-3); opacity: 0; transition: opacity 0.18s; pointer-events: none; z-index: 50;
+  max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast.on { opacity: 1; }
+
+.dev { display: none; flex: 0 0 auto; max-height: 64px; overflow: auto;
+  border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); }
+.dev.on { display: block; }
+.dev .l { font: var(--t-mono); font-size: 9.5px; color: var(--text-disabled); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.dev .l.out { color: var(--text-meta); }
+</style>
+</head>
+<body>
+
+<!-- THE TWO GLYPHS THIS PANEL USES, from the host's sprite in HUB_5.9.html.
+     Copied rather than drawn: the canonical Disguise set has both, and a hand-rolled
+     grid-of-squares here would be a third version of an icon that already exists
+     twice. Copied rather than SHARED because a <use href> cannot cross a document
+     and this tool has to run standalone — so the note in the host applies here too:
+     if these ever change there, change them here. `dashboard` is the tiles, `list`
+     is the rows. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-dashboard" viewBox="0 0 24 24"><path d="M12.7 8.8V3.6C12.7 3.3 12.8 3.1 13 3C13.1 2.8 13.3 2.7 13.6 2.7H20.4C20.7 2.7 20.9 2.8 21 3C21.2 3.1 21.3 3.3 21.3 3.6V8.8C21.3 9.1 21.2 9.3 21 9.4C20.9 9.6 20.7 9.7 20.4 9.7H13.6C13.3 9.7 13.1 9.6 13 9.4C12.8 9.3 12.7 9.1 12.7 8.8ZM2.7 12V3.6C2.7 3.3 2.8 3.1 3 3C3.1 2.8 3.3 2.7 3.6 2.7H10.4C10.7 2.7 10.9 2.8 11 3C11.2 3.1 11.3 3.3 11.3 3.6V12C11.3 12.3 11.2 12.5 11 12.6C10.9 12.8 10.7 12.9 10.4 12.9H3.6C3.3 12.9 3.1 12.8 3 12.6C2.8 12.5 2.7 12.3 2.7 12ZM12.7 20.4V12C12.7 11.7 12.8 11.5 13 11.4C13.1 11.2 13.3 11.1 13.6 11.1H20.4C20.7 11.1 20.9 11.2 21 11.4C21.2 11.5 21.3 11.7 21.3 12V20.4C21.3 20.6 21.2 20.8 21 21C20.9 21.2 20.7 21.3 20.4 21.3H13.6C13.3 21.3 13.1 21.2 13 21C12.8 20.8 12.7 20.6 12.7 20.4ZM2.7 20.4V15.1C2.7 14.9 2.8 14.7 3 14.5C3.1 14.4 3.3 14.3 3.6 14.3H10.4C10.7 14.3 10.9 14.4 11 14.5C11.2 14.7 11.3 14.9 11.3 15.1V20.4C11.3 20.6 11.2 20.8 11 21C10.9 21.2 10.7 21.3 10.4 21.3H3.6C3.3 21.3 3.1 21.2 3 21C2.8 20.8 2.7 20.6 2.7 20.4ZM4.4 11.2H9.6V4.4H4.4V11.2ZM14.4 19.5H19.6V12.8H14.4V19.5ZM14.4 8H19.6V4.4H14.4V8ZM4.4 19.5H9.6V16H4.4V19.5Z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.11 8.4C7.87 8.4 7.67 8.32 7.5 8.15C7.34 7.99 7.26 7.78 7.26 7.54C7.26 7.3 7.34 7.09 7.5 6.93C7.67 6.77 7.87 6.69 8.11 6.69H20.3C20.54 6.69 20.74 6.77 20.91 6.94C21.07 7.1 21.16 7.3 21.16 7.55C21.16 7.79 21.07 7.99 20.91 8.16C20.74 8.32 20.54 8.4 20.3 8.4H8.11ZM8.11 12.85C7.87 12.85 7.67 12.77 7.5 12.6C7.34 12.44 7.26 12.24 7.26 12C7.26 11.75 7.34 11.55 7.5 11.39C7.67 11.23 7.87 11.15 8.11 11.15H20.3C20.54 11.15 20.74 11.23 20.91 11.4C21.07 11.56 21.16 11.76 21.16 12C21.16 12.25 21.07 12.45 20.91 12.61C20.74 12.77 20.54 12.85 20.3 12.85H8.11ZM8.11 17.31C7.87 17.31 7.67 17.23 7.5 17.06C7.34 16.9 7.26 16.7 7.26 16.45C7.26 16.21 7.34 16.01 7.5 15.84C7.67 15.68 7.87 15.6 8.11 15.6H20.3C20.54 15.6 20.74 15.68 20.91 15.85C21.07 16.01 21.16 16.22 21.16 16.46C21.16 16.7 21.07 16.91 20.91 17.07C20.74 17.23 20.54 17.31 20.3 17.31H8.11ZM3.69 8.4C3.47 8.4 3.27 8.31 3.1 8.14C2.93 7.97 2.85 7.77 2.85 7.53C2.85 7.3 2.93 7.1 3.1 6.93C3.27 6.77 3.47 6.69 3.71 6.69C3.94 6.69 4.14 6.77 4.31 6.94C4.47 7.1 4.55 7.31 4.55 7.55C4.55 7.78 4.47 7.98 4.31 8.14C4.14 8.31 3.94 8.4 3.69 8.4ZM3.69 12.85C3.47 12.85 3.27 12.77 3.1 12.6C2.93 12.43 2.85 12.22 2.85 11.98C2.85 11.75 2.93 11.55 3.1 11.39C3.27 11.23 3.47 11.15 3.71 11.15C3.94 11.15 4.14 11.23 4.31 11.39C4.47 11.55 4.55 11.75 4.55 11.99C4.55 12.23 4.47 12.43 4.31 12.6C4.14 12.77 3.94 12.85 3.69 12.85ZM3.69 17.31C3.47 17.31 3.27 17.22 3.1 17.05C2.93 16.88 2.85 16.68 2.85 16.44C2.85 16.2 2.93 16 3.1 15.84C3.27 15.68 3.47 15.6 3.71 15.6C3.94 15.6 4.14 15.68 4.31 15.84C4.47 16.01 4.55 16.21 4.55 16.46C4.55 16.68 4.47 16.88 4.31 17.05C4.14 17.22 3.94 17.31 3.69 17.31Z"/></symbol>
+</defs></svg>
+
+<div class="app">
+  <div class="bar">
+    <span class="st" id="st">HOST <b>CONNECTING</b></span>
+    <span class="grow"></span>
+    <button class="btn" id="b-files" title="Add files to the bin">+ FILES</button>
+    <button class="btn cta" id="b-folder" title="Point at a project folder — everything playable in it goes in the bin. Nothing is copied and nothing leaves this machine">+ FOLDER</button>
+  </div>
+
+  <div class="filters">
+    <input class="find" id="find" placeholder="find…" spellcheck="false">
+    <span class="seg" id="kinds">
+      <button class="btn on" data-kind="">ALL</button>
+      <button class="btn" data-kind="video">VIDEO</button>
+      <button class="btn" data-kind="audio">AUDIO</button>
+      <button class="btn" data-kind="image">STILLS</button>
+    </span>
+    <span class="seg" id="uses">
+      <button class="btn on" data-use="">ANY</button>
+      <button class="btn" data-use="used" title="Already on a track in this take">IN SHOW</button>
+      <button class="btn" data-use="free" title="In the bin, not used anywhere yet">UNUSED</button>
+    </span>
+    <span class="seg" id="views">
+      <button class="btn ico" data-view="grid" title="Grid — thumbnails, pick a cue by eye" aria-label="Grid view">
+        <svg class="ic"><use href="#i-dashboard"/></svg></button>
+      <button class="btn ico" data-view="list" title="List — rows with names, check a delivery against a running order" aria-label="List view">
+        <svg class="ic"><use href="#i-list"/></svg></button>
+    </span>
+  </div>
+
+  <div class="shelf" id="shelf"></div>
+  <div class="foot" id="foot"></div>
+  <div class="dev" id="dev"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="f-files" accept="video/*,audio/*,image/*" multiple style="display:none">
+<input type="file" id="f-folder" webkitdirectory directory multiple style="display:none">
+<div id="probe" style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none"></div>
+
+<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg">
+<link rel="icon" type="image/png" sizes="96x96" href="favicon/favicon-96x96.png">
+
+<script>
+/* ==========================================================================
+   0 · THE WIRE — SCENE-STUDY-BRIDGE.md, version 1.
+   ========================================================================== */
+const BRIDGE_V = 1;
+const EMBEDDED = window.parent !== window;
+const MODE = 'bin';
+
+const post = (type, body, transfer) => {
+  const msg = Object.assign({ v: BRIDGE_V, type, mode: MODE }, body || {});
+  if (EMBEDDED) window.parent.postMessage(msg, '*', transfer || []);
+  devLog('out', type, body);
+};
+
+/* ==========================================================================
+   1 · STATE
+   ========================================================================== */
+const S = {
+  takeId: null,
+  items: new Map(),        // id -> item (below)
+  seqs: [], rows: new Map(),
+  sel: null,
+  live: false,
+};
+/*  An ITEM is
+      { id, name, kind, bytes, thumb, size, dur, w, h, source, tracks:Set }
+    `id` is derived from the NAME AND SIZE rather than invented, so the same file
+    arriving twice — once as a take asset and once from the folder it lives in — is
+    one row in the bin rather than two that look identical. `tracks` is which lanes
+    are using it, which is the only reason the bin can say IN SHOW. */
+const F = { q: '', kind: '', use: '' };
+/* WHICH VIEW, and it is remembered. Grid or list is a working preference rather than a
+   fact about the show, so it lives in this browser and never goes near the take. It is
+   read defensively because a private window throws on the first access. */
+const VIEW_KEY = 'pctf.bin.view';
+let VIEW = 'grid';
+try { const v = localStorage.getItem(VIEW_KEY); if (v === 'list' || v === 'grid') VIEW = v; } catch (e) {}
+
+const el = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (m) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+const mmss = (s) => {
+  s = Math.max(0, s || 0);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+};
+const mb = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+let toastT = 0;
+function toast(msg) {
+  const t = el('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+const VIDEO_RE = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;
+const AUDIO_RE = /\.(mp3|wav|aac|m4a|flac|ogg|aif|aiff)$/i;
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i;
+function kindOf(name, type) {
+  if (/^video\//.test(type || '') || VIDEO_RE.test(name)) return 'video';
+  if (/^audio\//.test(type || '') || AUDIO_RE.test(name)) return 'audio';
+  if (/^image\//.test(type || '') || IMAGE_RE.test(name)) return 'image';
+  return null;
+}
+/* THE SAME FILE IS THE SAME ITEM. Name and byte length: two different files with
+   the same name AND the same length is a collision nobody will hit in a show
+   folder, and the alternative — hashing every megabyte on import — costs a second
+   per file for an answer that is not more true. */
+const idOf = (name, size) => name.toLowerCase().replace(/\s+/g, '_') + ':' + size;
+
+/* ==========================================================================
+   2 · WHAT ARRIVES
+   ========================================================================== */
+const IN = {
+  hello(m) {
+    if (m.tokens) applyTokens(m.tokens);
+    S.live = true; status();
+  },
+  scene(m) { S.takeId = m.takeId || null; },
+  /* a file loaded on a track ANYWHERE in this take. It is content this production
+     is using, so it belongs in the bin whether or not somebody put it there — the
+     bin is an inventory, not a scrapbook. */
+  mediaAsset(m) {
+    if (!m || !m.bytes || !m.name) return;
+    const kind = m.kind === 'audio' ? 'audio' : (m.kind === 'image' ? 'image' : kindOf(m.name, '') || 'video');
+    const id = idOf(m.name, m.bytes.byteLength);
+    const have = S.items.get(id);
+    if (have) { have.tracks.add(m.trackId); have.source = have.source || 'take'; render(); return; }
+    add({ id, name: m.name, kind, bytes: m.bytes, size: m.bytes.byteLength, source: 'take' },
+        new Set([m.trackId]));
+  },
+  /* which lanes are using what, so IN SHOW is true rather than a guess */
+  clips(m) {
+    if (m.sequences) S.seqs = m.sequences;
+    if (m.clips) {
+      S.rows.clear();
+      m.clips.forEach(c => S.rows.set(c.clipId || c.trackId, c));
+      /* BY CLIP, THEN REDUCED TO LANES. Keyed by track it lost every clip but one per
+         lane, so a file used as the second shot on a lane read as not being in the show. */
+      const byClip = new Map();
+      m.clips.forEach(c => byClip.set(c.clipId || c.trackId, c));
+      S.items.forEach(it => {
+        it.tracks = new Set([...byClip.values()].filter(c => c.name === it.name).map(c => c.trackId));
+      });
+    }
+    render();
+  },
+  /* THE TIMELINE ASKING FOR AN ITEM'S BYTES. Something was dragged onto a lane over
+     there; the id travelled with the drag and the file lives here. The answer is an
+     ordinary `mediaAsset`, so the file lands on that track by exactly the path a
+     file loaded any other way takes — no second route into the take. */
+  binRequest(m) {
+    const it = S.items.get(m.assetId);
+    if (!it) return;
+    /* THE CLIP SLOT THE LANE RESERVED travels back untouched. A lane holds several
+       clips one after another, and answering without it would land this file as the
+       lane's first clip — on top of whatever is already there. */
+    post('mediaAsset', { trackId: m.trackId, clipId: m.clipId || m.trackId,
+                         name: it.name, kind: it.kind, bytes: it.bytes });
+    it.tracks.add(m.trackId);
+    render();
+    toast(it.name + ' → that track');
+  },
+};
+
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || d.v !== BRIDGE_V || !IN[d.type]) return;
+  devLog('in', d.type, d);
+  IN[d.type](d);
+});
+
+function applyTokens(tokens) {
+  Object.entries(tokens).forEach(([k, v]) => {
+    if (k.startsWith('--') && typeof v === 'string') document.documentElement.style.setProperty(k, v);
+  });
+}
+const devLines = [];
+function devLog(dir, type, body) {
+  if (EMBEDDED) return;
+  devLines.unshift('<div class="l ' + dir + '">' + (dir === 'out' ? '→ ' : '← ') + type + ' '
+    + (body ? JSON.stringify(body, (k, v) => v instanceof ArrayBuffer ? '[' + v.byteLength + ' bytes]' : v).slice(0, 170) : '') + '</div>');
+  devLines.length = Math.min(devLines.length, 24);
+  el('dev').innerHTML = devLines.join('');
+}
+
+/* ==========================================================================
+   3 · TAKING THINGS IN
+   ========================================================================== */
+function add(item, tracks) {
+  item.tracks = tracks || new Set();
+  item.thumb = null; item.dur = 0;
+  S.items.set(item.id, item);
+  render();
+  thumbQ.push(item);
+  if (!thumbBusy) nextThumb();
+}
+
+function ingest(files, source) {
+  const list = [...files].filter(f => kindOf(f.name, f.type));
+  if (!list.length) { toast('nothing playable in that'); return; }
+  let added = 0, dupes = 0;
+  let pending = list.length;
+  list.forEach(f => {
+    f.arrayBuffer().then(buf => {
+      const id = idOf(f.name, buf.byteLength);
+      if (S.items.has(id)) dupes++;
+      else {
+        added++;
+        add({ id, name: f.name, kind: kindOf(f.name, f.type), bytes: buf,
+              size: buf.byteLength, source }, new Set());
+      }
+      if (--pending === 0) {
+        toast(added + ' added' + (dupes ? ' · ' + dupes + ' already in the bin' : ''));
+      }
+    }).catch(() => { pending--; });
+  });
+}
+
+el('b-files').addEventListener('click', () => el('f-files').click());
+el('b-folder').addEventListener('click', () => el('f-folder').click());
+el('f-files').addEventListener('change', (e) => { ingest(e.target.files, 'files'); e.target.value = ''; });
+el('f-folder').addEventListener('change', (e) => { ingest(e.target.files, 'folder'); e.target.value = ''; });
+
+el('shelf').addEventListener('dragover', (e) => {
+  if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); el('shelf').classList.add('drop'); }
+});
+el('shelf').addEventListener('dragleave', () => el('shelf').classList.remove('drop'));
+el('shelf').addEventListener('drop', (e) => {
+  el('shelf').classList.remove('drop');
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault();
+  ingest(e.dataTransfer.files, 'dropped');
+});
+
+/* ==========================================================================
+   4 · THE THUMBNAILS
+   One frame per item, made once. Video is seeked a little way in for the reason
+   the timeline's filmstrip is: clips open on black — a slate, a fade-up, a
+   countdown — and a black thumbnail is indistinguishable from a broken one.
+   Serialised, because decoding forty files at once is how a panel locks up.
+   ========================================================================== */
+const thumbQ = [];
+let thumbBusy = false;
+function nextThumb() {
+  const it = thumbQ.shift();
+  if (!it) { thumbBusy = false; return; }
+  thumbBusy = true;
+  const done = () => { render(); nextThumb(); };
+  const url = URL.createObjectURL(new Blob([it.bytes]));
+  const give = () => URL.revokeObjectURL(url);
+
+  if (it.kind === 'image') {
+    const img = new Image();
+    img.onload = () => {
+      it.w = img.naturalWidth; it.h = img.naturalHeight;
+      it.thumb = shrink(img, img.naturalWidth, img.naturalHeight);
+      give(); done();
+    };
+    img.onerror = () => { give(); done(); };
+    img.src = url;
+    return;
+  }
+  if (it.kind === 'audio') {
+    /* audio has no frame. Its length is the useful fact, and that is all it gets. */
+    const a = document.createElement('audio');
+    a.preload = 'metadata'; a.src = url;
+    el('probe').appendChild(a);
+    let settled = false;
+    const fin = () => {
+      if (settled) return;
+      if (isFinite(a.duration) && a.duration > 0) { it.dur = a.duration; settled = true; }
+      else { try { a.currentTime = 1e101; } catch (e) {} return; }
+      a.remove(); give(); done();
+    };
+    a.addEventListener('loadedmetadata', fin);
+    a.addEventListener('durationchange', fin);
+    a.addEventListener('error', () => { a.remove(); give(); done(); });
+    setTimeout(() => { if (!settled) { a.remove(); give(); done(); } }, 6000);
+    return;
+  }
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  el('probe').appendChild(v);
+  let shot = false, probed = false;
+  const grab = () => {
+    if (shot) return;
+    shot = true;
+    it.w = v.videoWidth; it.h = v.videoHeight;
+    it.thumb = shrink(v, v.videoWidth || 16, v.videoHeight || 9);
+    v.remove(); give(); done();
+  };
+  const settle = () => {
+    if (!isFinite(v.duration) || v.duration <= 0) {
+      /* the WebM-with-no-duration case, again: seek past the end and the browser
+         has to work out where the end is. Same note as the timeline's. */
+      if (!probed) { probed = true; try { v.currentTime = 1e101; } catch (e) {} }
+      return;
+    }
+    if (it.dur) return;
+    it.dur = v.duration;
+    try { v.currentTime = Math.min(v.duration * 0.15, 3); } catch (e) { grab(); }
+  };
+  v.addEventListener('loadedmetadata', settle);
+  v.addEventListener('durationchange', settle);
+  v.addEventListener('seeked', grab);
+  v.addEventListener('error', () => { v.remove(); give(); done(); });
+  setTimeout(() => { if (!shot) grab(); }, 8000);
+}
+function shrink(src, w, h) {
+  const W = 192, H = Math.max(1, Math.round(W * (h || 9) / (w || 16)));
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  try { cv.getContext('2d').drawImage(src, 0, 0, W, H); } catch (e) { return null; }
+  try { return cv.toDataURL('image/jpeg', 0.68); } catch (e) { return null; }
+}
+
+/* ==========================================================================
+   5 · DRAWING THE SHELF
+   ========================================================================== */
+function visible() {
+  const q = F.q.trim().toLowerCase();
+  return [...S.items.values()].filter(it => {
+    if (F.kind && it.kind !== F.kind) return false;
+    if (F.use === 'used' && !it.tracks.size) return false;
+    if (F.use === 'free' && it.tracks.size) return false;
+    if (q && !it.name.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function render() {
+  const shelf = el('shelf');
+  const list = visible();
+  /* the view is a class on the shelf, so one stylesheet holds both layouts and the
+     items themselves are identical markup in either */
+  shelf.classList.toggle('grid', VIEW === 'grid');
+  shelf.classList.toggle('list', VIEW === 'list');
+  if (!S.items.size) {
+    shelf.innerHTML = '<p class="none">The bin is empty.<br>'
+      + '<b>+ FOLDER</b> points it at a project folder, <b>+ FILES</b> adds a few, and anything '
+      + 'already loaded on a track in this take turns up here on its own.<br>'
+      + 'Drop files anywhere on this panel.</p>';
+  } else if (!list.length) {
+    shelf.innerHTML = '<p class="none">Nothing matches that filter.<br>'
+      + '<b>' + S.items.size + '</b> item' + (S.items.size === 1 ? '' : 's') + ' in the bin.</p>';
+  } else {
+    shelf.innerHTML = list.map(it => {
+      const used = it.tracks.size;
+      const where = usedWhere(it);
+      return '<div class="item' + (S.sel === it.id ? ' sel' : '') + '" data-item="' + esc(it.id) + '" draggable="true"'
+        + ' title="' + esc(it.name) + ' · ' + it.kind + ' · ' + mb(it.size)
+        + (it.dur ? ' · ' + mmss(it.dur) : '') + (it.w ? ' · ' + it.w + '×' + it.h : '')
+        + (where ? ' · used on ' + esc(where) : ' · not used yet')
+        + ' — drag onto a track in the Sequencing Timeline">'
+        + '<div class="thumb">'
+        +   (it.thumb ? '<img src="' + it.thumb + '" alt="">'
+                      : '<span class="ph">' + (it.kind === 'audio' ? 'AUDIO' : '…') + '</span>')
+        +   '<span class="kd ' + it.kind + '">'
+        +     '<span class="full">' + (it.kind === 'image' ? 'STILL' : it.kind.toUpperCase()) + '</span>'
+        +     '<span class="one">' + (it.kind === 'image' ? 'S' : it.kind === 'audio' ? 'A' : 'V') + '</span>'
+        +   '</span>'
+        +   (used ? '<span class="use" title="in the show"></span>' : '')
+        +   (it.dur ? '<span class="dur">' + mmss(it.dur) + '</span>' : '')
+        + '</div>'
+        /* ONE MARKUP FOR BOTH VIEWS. Every fact is emitted every time, as its own
+           column, and the stylesheet decides which of them a given view at a given
+           width can show — rather than two renderers drifting apart. */
+        + '<div class="meta">'
+        +   '<b>' + esc(it.name) + '</b>'
+        +   '<span class="col c-dur">' + (it.dur ? mmss(it.dur) : '—') + '</span>'
+        +   '<span class="col c-size">' + mb(it.size) + '</span>'
+        +   '<span class="col c-dim">' + (it.w ? it.w + '×' + it.h : '—') + '</span>'
+        +   '<span class="col c-use' + (used ? ' on' : '') + '">'
+        +     (where ? esc(where) : 'unused') + '</span>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  shelf.querySelectorAll('[data-item]').forEach(n => {
+    n.addEventListener('click', () => { S.sel = n.dataset.item; render(); });
+    n.addEventListener('dragstart', (e) => {
+      const it = S.items.get(n.dataset.item);
+      if (!it) return;
+      /* WHAT TRAVELS IS THE ID, NOT THE FILE. `dataTransfer` cannot carry an
+         ArrayBuffer, and a drag between two iframes is a browser-level gesture that
+         only moves strings — so the drop end asks for the bytes by id and this
+         panel answers. The `text/plain` copy is there so dropping onto anything
+         else in the world produces a name rather than nothing. */
+      const payload = JSON.stringify({ assetId: it.id, name: it.name, kind: it.kind });
+      /* BOTH TYPES, ON PURPOSE. A custom MIME type is the correct way to carry
+         this and it survives a same-page drag — but it is also the first thing to
+         be dropped when a drag crosses a boundary the browser is cautious about,
+         and when it goes the drop end gets an empty `dataTransfer` and nothing
+         happens at all, silently. `text/plain` always survives, so the payload
+         rides in it too behind a prefix nothing else would produce. The drop end
+         tries the proper type first and falls back. */
+      e.dataTransfer.setData('application/x-productions-asset', payload);
+      e.dataTransfer.setData('text/plain', 'productions-asset:' + payload);
+      e.dataTransfer.effectAllowed = 'copy';
+      n.classList.add('dragging');
+    });
+    n.addEventListener('dragend', () => n.classList.remove('dragging'));
+  });
+  paintFoot();
+}
+
+/* which lanes, said in the show's own words rather than in track ids */
+function usedWhere(it) {
+  if (!it.tracks.size) return '';
+  const names = [...it.tracks].map(tid => {
+    const row = S.rows.get(tid);
+    if (!row) return null;
+    const q = S.seqs.find(x => x.id === row.seqId);
+    return q ? q.name : null;
+  }).filter(Boolean);
+  const uniq = [...new Set(names)];
+  if (!uniq.length) return it.tracks.size + ' track' + (it.tracks.size === 1 ? '' : 's');
+  return uniq.join(' · ');
+}
+
+function paintFoot() {
+  const all = [...S.items.values()];
+  const used = all.filter(i => i.tracks.size).length;
+  const byKind = k => all.filter(i => i.kind === k).length;
+  const bits = [];
+  bits.push('<span class="chip"><b>' + all.length + '</b> ITEMS</span>');
+  bits.push('<span class="chip">' + byKind('video') + 'V · ' + byKind('audio') + 'A · ' + byKind('image') + 'S</span>');
+  if (all.length) bits.push('<span class="chip ' + (used ? 'ok' : '') + '"><b>' + used + '</b> IN SHOW</span>');
+  const size = all.reduce((n, i) => n + i.size, 0);
+  if (size) bits.push('<span class="chip">' + mb(size) + '</span>');
+  el('foot').innerHTML = bits.join('');
+}
+
+function status() {
+  const st = el('st');
+  st.className = 'st ' + (EMBEDDED ? (S.live ? 'live' : '') : 'alone');
+  st.innerHTML = EMBEDDED ? 'BIN <b>' + (S.live ? 'LIVE' : 'CONNECTING') + '</b>'
+                          : 'STANDALONE <b>BIN</b>';
+}
+
+/* ==========================================================================
+   6 · THE FILTERS
+   ========================================================================== */
+el('find').addEventListener('input', (e) => { F.q = e.target.value; render(); });
+el('kinds').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kind]'); if (!b) return;
+  F.kind = b.dataset.kind;
+  el('kinds').querySelectorAll('.btn').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+el('uses').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-use]'); if (!b) return;
+  F.use = b.dataset.use;
+  el('uses').querySelectorAll('.btn').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+el('views').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-view]'); if (!b) return;
+  VIEW = b.dataset.view;
+  try { localStorage.setItem(VIEW_KEY, VIEW); } catch (err) {}
+  paintViews();
+  render();
+});
+/* the remembered view has to be on the buttons as well as on the shelf, or a reload
+   comes up in list view with GRID lit */
+function paintViews() {
+  el('views').querySelectorAll('[data-view]').forEach(x =>
+    x.classList.toggle('on', x.dataset.view === VIEW));
+}
+paintViews();
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') { if (e.key === 'Escape') { e.target.value = ''; F.q = ''; render(); e.target.blur(); } return; }
+  if (e.key === '/') { e.preventDefault(); el('find').focus(); }
+});
+
+/* ==========================================================================
+   7 · STANDALONE
+   ========================================================================== */
+if (!EMBEDDED) {
+  el('dev').classList.add('on');
+  S.takeId = 'mock'; S.live = true;
+  toast('standalone — drop files, or use + FOLDER');
+}
+status();
+render();
+
+post('ready', { capabilities: ['bin', 'thumbnails', 'filter', 'drag-out', 'folder'] });
+</script>
+</body>
+</html>

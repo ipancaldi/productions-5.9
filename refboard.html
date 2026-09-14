@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference Board — Productions</title>
+<!--
+  ============================================================================
+  REFERENCE BOARD — the drag-and-drop input panel for the Productions v5 agent.
+
+  Sibling of sketchpad.html and built on the same three rules:
+    · it is a SEPARATE FILE, hosted in an <iframe>, so it can be opened and
+      iterated on its own and cannot take the workspace down with it;
+    · it is NOT an API client — it posts to the host, and the host talks to :3902;
+    · it boots standalone against its own state, or "separate file" is a slogan.
+
+  THE DESIGN ARGUMENT: a pile of images is ambiguous in exactly one way that
+  matters, and it is not resolvable by looking harder. A ground plan and a mood
+  shot are different KINDS of evidence — one carries dimensions, the other carries
+  intent — and read as each other they produce confident nonsense. So every tile
+  declares its ROLE, and the role travels with the bytes.
+
+  ORDER IS MEANING: the board's order is the order the images reach the model, and
+  the first image frames how the rest are read. Hence drag-to-reorder, and a
+  visible index on every tile.
+
+  WEIGHT: downscaling happens HERE, before the bytes leave the panel. A 12 MP
+  phone photo is 40× the pixels a model needs and every one of them would cross
+  two postMessage boundaries.
+  ============================================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* The palette is NOT authored here — see sketchpad.html. :root is the standalone
+   fallback; the host sends its resolved tokens in `hello`. */
+:root {
+  --gray-300: #D0D5DD; --gray-400: #A2ABBA; --gray-500: #858FA2; --gray-550: #62748E;
+  --gray-600: #475467; --gray-650: #4F5D72; --gray-700: #344054; --gray-800: #1D2939;
+  --gray-900: #101828;
+
+  --surface-canvas: var(--gray-900); --surface-panel: var(--gray-800);
+  --surface-raised: var(--gray-700); --surface-selected: var(--gray-700);
+  --surface-emphasis: var(--gray-600); --surface-emphasis-hover: var(--gray-650);
+  --border-subtle: var(--gray-700); --border-strong: var(--gray-550); --border-emphasis: var(--gray-300);
+  --text-primary: var(--gray-300); --text-secondary: var(--gray-400);
+  --text-meta: var(--gray-500); --text-disabled: var(--gray-600);
+
+  --status-complete: #6BFFDC; --status-progress: #FF8559; --status-failed: #FF98F4;
+  --status-active: #FEFF34; --status-info: #D2B3ED; --status-live: #A74CEE;
+  --tint-emphasis: rgba(208,213,221,0.18); --ring-emphasis: rgba(208,213,221,0.65);
+  --scrim: rgba(16,24,40,0.82); --elev-3: 0 12px 24px rgba(16,24,40,0.50);
+
+  --space-2: 2px; --space-4: 4px; --space-6: 6px; --space-8: 8px; --space-10: 10px;
+  --space-12: 12px; --space-16: 16px;
+  --radius-xs: 3px; --radius-sm: 5px; --radius-card: 8px; --radius-pill: 999px;
+
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+  --t-body-m: 400 12px/18px var(--font);
+  --t-body-s: 400 10.5px/16px var(--font);
+  --t-label-m: 500 10.5px/14px var(--font); --tr-label-m: 0.07em;
+  --t-label-s: 500 9.5px/13px var(--font);  --tr-label-s: 0.09em;
+  --t-mono: 500 10.5px/14px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--surface-panel); color: var(--text-primary); font: var(--t-body-m);
+  overflow: hidden; -webkit-font-smoothing: antialiased; }
+.app { height: 100%; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8); }
+
+.bar { display: flex; align-items: center; gap: var(--space-4); flex: 0 0 auto; }
+.bar-scroll { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--space-4);
+  overflow-x: auto; scrollbar-width: none; }
+.bar-scroll::-webkit-scrollbar { height: 0; }
+.bar-fixed { flex: 0 0 auto; display: flex; gap: var(--space-4); padding-left: var(--space-6);
+  border-left: 1px solid var(--border-subtle); }
+.btn { font: var(--t-label-m); letter-spacing: var(--tr-label-m); color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 0 var(--space-8); height: 22px; display: inline-flex; align-items: center; gap: var(--space-4);
+  cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+.btn.on { color: var(--gray-900); background: var(--text-primary); border-color: var(--text-primary); }
+.btn:disabled { color: var(--text-disabled); cursor: default; }
+.btn.cta { color: var(--gray-900); background: var(--status-complete); border-color: var(--status-complete); }
+.btn.cta:disabled { color: var(--text-disabled); background: transparent; border-color: var(--border-subtle); }
+.btn.danger:hover:not(:disabled) { color: var(--status-failed); border-color: var(--status-failed); }
+.sep { width: 1px; height: 16px; background: var(--border-subtle); margin: 0 var(--space-2); flex: 0 0 auto; }
+.grow { flex: 1 1 auto; }
+
+/* ---------- the board ---------- */
+.board { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  background: var(--surface-canvas); padding: var(--space-8); }
+.board.over { border-color: var(--status-complete); background: color-mix(in srgb, var(--status-complete) 6%, var(--surface-canvas)); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: var(--space-8); }
+
+.tile { border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  background: var(--surface-panel); display: flex; flex-direction: column; overflow: hidden; }
+.tile.out { opacity: 0.42; }
+.tile.drag { outline: 1px dashed var(--border-emphasis); }
+/* A fixed 4:3 window with the image CONTAINED in it, not sized by it: a square
+   reference next to a landscape one made the row ragged, because aspect-ratio
+   yields to content and a square img at width:100% is taller than the box. */
+.tile .thumb { position: relative; aspect-ratio: 4 / 3; min-height: 0; background: var(--gray-900);
+  display: flex; align-items: center; justify-content: center; cursor: grab; overflow: hidden; }
+.tile .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.tile .idx { position: absolute; top: var(--space-4); left: var(--space-4);
+  font: var(--t-mono); color: var(--gray-900); background: var(--text-primary);
+  border-radius: var(--radius-xs); padding: 0 var(--space-4); }
+.tile .x { position: absolute; top: var(--space-4); right: var(--space-4);
+  font: var(--t-label-s); color: var(--text-secondary); background: var(--scrim);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+  width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tile .x:hover { color: var(--status-failed); border-color: var(--status-failed); }
+.tile .body { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
+.tile .name { font: var(--t-body-s); color: var(--text-primary); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.tile .meta { font: var(--t-label-s); letter-spacing: var(--tr-label-s); color: var(--text-meta); text-transform: uppercase; }
+.roles { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.roles button { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); background: transparent; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill); padding: 1px var(--space-6); cursor: pointer; }
+.roles button:hover { color: var(--text-primary); }
+.roles button.on { color: var(--gray-900); background: var(--status-info); border-color: var(--status-info); }
+input.note { font: var(--t-body-s); color: var(--text-primary); background: var(--surface-canvas);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0 var(--space-6);
+  height: 22px; outline: none; width: 100%; }
+input.note:focus { border-color: var(--border-strong); }
+
+/* the empty state does the teaching: what to drop, and why the role matters */
+.empty { height: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: var(--space-8); text-align: center; padding: var(--space-16); }
+.empty .h { font: var(--t-label-m); letter-spacing: var(--tr-label-m); text-transform: uppercase; color: var(--text-secondary); }
+.empty .p { font: var(--t-body-s); color: var(--text-meta); max-width: 320px; }
+.empty .p b { color: var(--text-secondary); font-weight: 500; }
+
+.veil { position: absolute; inset: 0; background: var(--scrim); display: none;
+  align-items: center; justify-content: center; flex-direction: column; gap: var(--space-6); }
+.veil.on { display: flex; }
+/* WORKING — one indeterminate sweep, in the agent's violet. Indeterminate on
+   purpose: an interpret has no honest percentage, and a fake one is worse. */
+.work { position: relative; height: 2px; width: 120px; overflow: hidden; flex: 0 0 auto;
+  border-radius: var(--radius-pill); background: var(--border-subtle); }
+.work i { position: absolute; top: 0; bottom: 0; width: 38%; border-radius: inherit;
+  background: var(--status-info); animation: work-sweep 1.15s ease-in-out infinite; }
+@keyframes work-sweep { from { left: -38%; } to { left: 100%; } }
+.veil .t { font: var(--t-label-m); letter-spacing: var(--tr-label-m); text-transform: uppercase; }
+.veil .s { font: var(--t-body-s); color: var(--text-meta); max-width: 260px; text-align: center; }
+
+.foot { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.chip { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  padding: 2px var(--space-8); white-space: nowrap; }
+.chip.ok { color: var(--status-complete); border-color: color-mix(in srgb, var(--status-complete) 40%, transparent); }
+.chip.warn { color: var(--status-progress); border-color: color-mix(in srgb, var(--status-progress) 40%, transparent); }
+
+#dev { display: none; flex: 0 0 auto; max-height: 104px; overflow: auto; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); padding: var(--space-6); background: var(--surface-canvas); }
+#dev.on { display: block; }
+#dev .l { font: var(--t-mono); color: var(--text-meta); white-space: pre-wrap; word-break: break-all; }
+#dev .l.out { color: var(--status-complete); }
+#dev .l.in { color: var(--status-info); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="bar">
+    <div class="bar-scroll">
+      <button class="btn" id="b-add">ADD IMAGES</button>
+      <button class="btn" id="b-all">INCLUDE ALL</button>
+      <button class="btn" id="b-none">INCLUDE NONE</button>
+      <span class="sep"></span>
+      <button class="btn danger" id="b-clear">CLEAR BOARD</button>
+    </div>
+    <div class="bar-fixed">
+      <button class="btn" id="b-3d" disabled title="Convert the first included image to a textured GLB with local TRELLIS-Silicon">MAKE 3D</button>
+      <button class="btn cta" id="b-go" disabled>INTERPRET</button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty">
+      <span class="h">Drop references here</span>
+      <span class="p">Ground plans, elevations, tech-pack pages, photographs of the room,
+        or a look you are chasing. Paste works too (⌘V), and so does the file picker.</span>
+      <span class="p">Then say what each one <b>is</b>. A ground plan carries dimensions and
+        a mood shot carries intent — read as each other they produce confident nonsense,
+        so the <b>role</b> travels with the image.</span>
+      <button class="btn" id="b-add2">CHOOSE FILES</button>
+    </div>
+    <div class="veil" id="veil">
+      <span class="t" id="veil-t">READING THE REFERENCES</span>
+      <span class="work"><i></i></span>
+      <span class="s" id="veil-s">The agent is working. Nothing has changed in the take yet —
+        it comes back as a plan you accept.</span>
+      <button class="btn" id="b-cancel">CANCEL</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span class="chip" id="c-count">0 IMAGES</span>
+    <span class="chip" id="c-inc">0 INCLUDED</span>
+    <span class="chip" id="c-weight">0 KB</span>
+    <span class="chip" id="c-roles">NO ROLES SET</span>
+    <span class="grow"></span>
+    <input class="note" id="note" maxlength="120" placeholder="WHAT SHOULD THE AGENT DO WITH THESE? (OPTIONAL)" style="flex: 1 1 200px; width: auto;">
+  </div>
+
+  <div id="dev"></div>
+</div>
+
+<input type="file" id="picker" accept="image/png,image/jpeg,image/webp" multiple style="display: none;">
+
+<script>
+/* ==========================================================================
+   0 · BRIDGE — the whole contract with the host lives in this block.
+   See AGENT-BRIDGE.md § Part 1.
+   ========================================================================== */
+const AGENT_V = 1;
+const EMBEDDED = window.parent !== window;
+const KIND = 'refs';
+
+const HOST = {
+  refRoles: ['plan', 'elevation', 'photo', 'drawing', 'mood'],
+  maxIncluded: 5,
+  maxEdge: 1568,          // the long edge a vision request actually needs
+};
+
+const post = (type, body, transfer) => {
+  const msg = Object.assign({ v: AGENT_V, type, kind: KIND }, body || {});
+  if (EMBEDDED) window.parent.postMessage(msg, '*', transfer || []);
+  devLog('out', type, body);
+};
+
+const IN = {
+  hello(m) {
+    if (m.tokens) applyTokens(m.tokens);
+    if (m.refRoles && m.refRoles.length) HOST.refRoles = m.refRoles;
+    if (m.maxIncluded) HOST.maxIncluded = m.maxIncluded;
+    render();
+  },
+  /* the host names the phase; the panel does not work it out from its own half */
+  busy(m) { setBusy(!!m.on, m.label, m.note); },
+  result(m) {
+    setBusy(false);
+    S.lastPlan = m.planId || null;
+    flash(m.error ? '3D conversion failed · ' + m.error
+      : m.trellis ? (m.glbName + ' loaded into Scene Study')
+      : m.opCount ? m.opCount + ' ops proposed' : 'read, nothing proposed');
+  },
+  clear() { S.refs = []; render(); },
+};
+
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || d.v !== AGENT_V || !IN[d.type]) return;
+  devLog('in', d.type, d);
+  IN[d.type](d);
+});
+
+function applyTokens(tokens) {
+  Object.entries(tokens).forEach(([k, v]) => {
+    if (k.startsWith('--') && typeof v === 'string') document.documentElement.style.setProperty(k, v);
+  });
+}
+
+const devLines = [];
+function devLog(dir, type, body) {
+  if (EMBEDDED) return;
+  devLines.unshift('<div class="l ' + dir + '">' + (dir === 'out' ? '→ ' : '← ') + type + ' '
+    + (body ? summarise(body) : '') + '</div>');
+  devLines.length = Math.min(devLines.length, 40);
+  document.getElementById('dev').innerHTML = devLines.join('');
+}
+function summarise(o) {
+  return JSON.stringify(o, (k, v) => {
+    if (v instanceof ArrayBuffer) return '[' + v.byteLength + ' bytes]';
+    return v;
+  }).slice(0, 240);
+}
+
+/* ==========================================================================
+   1 · STATE
+   ========================================================================== */
+const S = {
+  refs: [],        // { id, name, mime, bytes, url, w, h, role, note, include }
+  busy: false,
+  lastPlan: null,
+};
+let seq = 0;
+
+/* ==========================================================================
+   2 · TAKING IMAGES IN — drop, paste, pick. All three land here.
+   Downscaling happens on the way in, once, so nothing downstream carries pixels
+   nobody asked for. The original file is not kept: this panel is an input, not
+   an asset store, and the take is where things are kept.
+   ========================================================================== */
+async function accept(files) {
+  const list = [...files].filter(f => /^image\/(png|jpe?g|webp)$/.test(f.type));
+  if (!list.length) { flash('images only — png, jpeg or webp'); return; }
+  /* the board's own wait, and it is real: a 12 MP phone photo is decoded and
+     downscaled here, before anything leaves the panel */
+  let n = 0;
+  if (list.length) setBusy(true, 'READING FILES', 'decoding and downscaling ' + list.length + ' image' + (list.length === 1 ? '' : 's'));
+  for (const f of list) {
+    n++;
+    setBusy(true, 'READING FILES', n + ' of ' + list.length + ' · ' + f.name);
+    try {
+      const ref = await ingest(f);
+      S.refs.push(ref);
+      render();
+    } catch (e) {
+      flash('could not read ' + f.name);
+    }
+  }
+  setBusy(false);
+  post('dirty', { images: S.refs.length, included: included().length });
+}
+
+async function ingest(file) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, HOST.maxEdge / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  /* PNG for line work, JPEG for photographs: a ground plan re-encoded as JPEG
+     loses the thin lines that are the only reason it was dropped here. */
+  const line = /^image\/png$/.test(file.type);
+  const mime = line ? 'image/png' : 'image/jpeg';
+  const blob = await new Promise(r => cv.toBlob(r, mime, line ? undefined : 0.86));
+  const bytes = await blob.arrayBuffer();
+  return {
+    id: 'r' + (++seq), name: file.name, mime, bytes,
+    url: URL.createObjectURL(blob), w, h,
+    role: guessRole(file.name, w, h), note: '',
+    include: included().length < HOST.maxIncluded,
+  };
+}
+
+/* A guess, and it is labelled as one: the chip is pre-selected but the panel says
+   ROLES GUESSED until somebody confirms or changes one. A guess presented as a
+   declaration is the failure this whole panel exists to prevent. */
+function guessRole(name, w, h) {
+  const n = name.toLowerCase();
+  if (/plan|layout|ga[_-]|ground/.test(n)) return 'plan';
+  if (/elev|section/.test(n)) return 'elevation';
+  if (/dwg|cad|tech|pack|spec/.test(n)) return 'drawing';
+  if (/mood|ref|look|inspo/.test(n)) return 'mood';
+  return 'photo';
+}
+S.roleTouched = new Set();
+
+const board = document.getElementById('board');
+['dragenter', 'dragover'].forEach(t => board.addEventListener(t, (e) => {
+  e.preventDefault(); board.classList.add('over');
+}));
+['dragleave', 'drop'].forEach(t => board.addEventListener(t, (e) => {
+  if (t === 'dragleave' && board.contains(e.relatedTarget)) return;
+  board.classList.remove('over');
+}));
+board.addEventListener('drop', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.files && e.dataTransfer.files.length) accept(e.dataTransfer.files);
+});
+window.addEventListener('paste', (e) => {
+  const items = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (items.length) accept(items);
+});
+const picker = document.getElementById('picker');
+picker.addEventListener('change', () => { accept(picker.files); picker.value = ''; });
+document.getElementById('b-add').addEventListener('click', () => picker.click());
+document.getElementById('b-add2').addEventListener('click', () => picker.click());
+
+/* ==========================================================================
+   3 · THE BOARD — tiles, roles, order.
+   ========================================================================== */
+const grid = document.getElementById('grid');
+
+function render() {
+  const empty = !S.refs.length;
+  document.getElementById('empty').style.display = empty ? 'flex' : 'none';
+  grid.style.display = empty ? 'none' : 'grid';
+  grid.innerHTML = '';
+  let n = 0;
+  S.refs.forEach((r, i) => {
+    if (r.include) n++;
+    grid.appendChild(tile(r, i, r.include ? n : null));
+  });
+  status();
+}
+
+function tile(r, i, idx) {
+  const el = document.createElement('div');
+  el.className = 'tile' + (r.include ? '' : ' out');
+  el.dataset.i = i;
+  el.innerHTML =
+    '<div class="thumb" draggable="true" title="Drag to reorder — the first image frames the rest">'
+    + '<img src="' + r.url + '" alt="">'
+    + (idx ? '<span class="idx">' + idx + '</span>' : '')
+    + '<span class="x" data-act="del" title="Remove">✕</span></div>'
+    + '<div class="body">'
+    + '<span class="name" title="' + r.name + '">' + r.name + '</span>'
+    + '<span class="meta">' + r.w + '×' + r.h + ' · ' + kb(r.bytes.byteLength) + '</span>'
+    + '<div class="roles">'
+    + HOST.refRoles.map(ro => '<button data-role="' + ro + '"' + (ro === r.role ? ' class="on"' : '') + '>' + ro + '</button>').join('')
+    + '</div>'
+    + '<input class="note" maxlength="80" placeholder="NOTE — E.G. THE WALL IS 15 M" value="' + (r.note || '').replace(/"/g, '&quot;') + '">'
+    + '<button class="btn' + (r.include ? ' on' : '') + '" data-act="inc">' + (r.include ? 'INCLUDED' : 'EXCLUDED') + '</button>'
+    + '</div>';
+
+  el.querySelector('[data-act="del"]').addEventListener('click', () => {
+    URL.revokeObjectURL(r.url);
+    S.refs.splice(i, 1); render();
+  });
+  el.querySelector('[data-act="inc"]').addEventListener('click', () => {
+    if (!r.include && included().length >= HOST.maxIncluded) {
+      flash('at most ' + HOST.maxIncluded + ' images per interpret'); return;
+    }
+    r.include = !r.include; render();
+  });
+  el.querySelectorAll('[data-role]').forEach(b => b.addEventListener('click', () => {
+    r.role = b.dataset.role;
+    S.roleTouched.add(r.id);
+    render();
+  }));
+  const note = el.querySelector('input.note');
+  note.addEventListener('input', () => { r.note = note.value; });
+  note.addEventListener('change', status);
+
+  const thumb = el.querySelector('.thumb');
+  thumb.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', String(i));
+    e.dataTransfer.effectAllowed = 'move';
+    el.classList.add('drag');
+  });
+  thumb.addEventListener('dragend', () => el.classList.remove('drag'));
+  el.addEventListener('dragover', (e) => e.preventDefault());
+  el.addEventListener('drop', (e) => {
+    const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(from) || from === i) return;
+    e.stopPropagation();
+    const [moved] = S.refs.splice(from, 1);
+    S.refs.splice(i, 0, moved);
+    render();
+  });
+  return el;
+}
+
+const kb = (b) => b < 1024 * 1024 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
+const included = () => S.refs.filter(r => r.include);
+
+document.getElementById('b-all').addEventListener('click', () => {
+  S.refs.forEach((r, i) => { r.include = i < HOST.maxIncluded; });
+  if (S.refs.length > HOST.maxIncluded) flash('first ' + HOST.maxIncluded + ' included — that is the per-interpret cap');
+  render();
+});
+document.getElementById('b-none').addEventListener('click', () => {
+  S.refs.forEach(r => { r.include = false; }); render();
+});
+document.getElementById('b-clear').addEventListener('click', () => {
+  S.refs.forEach(r => URL.revokeObjectURL(r.url));
+  S.refs = []; S.roleTouched.clear(); render();
+});
+
+/* ==========================================================================
+   4 · WHAT TRAVELS
+   ========================================================================== */
+function interpret() {
+  const list = included();
+  if (S.busy || !list.length) return;
+  /* A COPY OF THE BYTES, and the copy is the point.
+
+     These used to be TRANSFERRED — handed over rather than cloned, which is the fast
+     thing to do with a megabyte and the wrong thing to do here. A transferred
+     ArrayBuffer is DETACHED on this side, so the board still listed the image, still
+     showed its size, and the second press of INTERPRET threw
+     `DataCloneError: ArrayBuffer at index 0 is already detached` — from inside the
+     sender, which looks exactly like the host ignoring the message. Interpreting the
+     same board twice is not an edge case; it is what happens after you change a role,
+     add a note, or the agent came back wrong.
+
+     So the bytes are sliced. A reference is at most 1568px of JPEG and there are at
+     most five of them: the copy costs nothing worth having a bug over, and the board
+     keeps its own images, which is what a board is for. */
+  const images = list.map(r => ({ name: r.name, mime: r.mime, bytes: r.bytes.slice(0),
+                                  role: r.role, note: r.note || '' }));
+  setBusy(true, 'SENDING', images.length + ' reference' + (images.length === 1 ? '' : 's')
+          + ' · ' + kb(images.reduce((a, i) => a + i.bytes.byteLength, 0)));
+  post('interpret', { images, note: document.getElementById('note').value.trim() },
+       images.map(i => i.bytes));
+  if (!EMBEDDED) {
+    console.log('[refboard] payload', images.map(i => ({ ...i, bytes: i.bytes.byteLength })));
+    setTimeout(() => { setBusy(false); flash('standalone — payload logged, not sent'); }, 700);
+  }
+}
+document.getElementById('b-go').addEventListener('click', interpret);
+document.getElementById('b-3d').addEventListener('click', () => {
+  const r = included()[0];
+  if (S.busy || !r) return;
+  setBusy(true, 'MAKING 3D', 'TRELLIS-Silicon is converting ' + r.name + ' · this usually takes several minutes');
+  const bytes = r.bytes.slice(0);
+  post('convert3d', { name: r.name, mime: r.mime, bytes }, [bytes]);
+  if (!EMBEDDED) setTimeout(() => { setBusy(false); flash('standalone — 3D request logged, not sent'); }, 700);
+});
+document.getElementById('b-cancel').addEventListener('click', () => {
+  post('cancel', { planId: S.lastPlan }); setBusy(false);
+});
+
+/* ==========================================================================
+   5 · WHAT THE PANEL SAYS ABOUT ITSELF
+   ========================================================================== */
+function status() {
+  const inc = included();
+  const weight = inc.reduce((a, r) => a + r.bytes.byteLength, 0);
+  document.getElementById('c-count').textContent = S.refs.length + (S.refs.length === 1 ? ' IMAGE' : ' IMAGES');
+  document.getElementById('b-3d').disabled = S.busy || !inc.length;
+  const ic = document.getElementById('c-inc');
+  ic.className = 'chip' + (inc.length ? ' ok' : ' warn');
+  ic.textContent = inc.length + ' INCLUDED';
+  document.getElementById('c-weight').textContent = kb(weight);
+  const untouched = inc.filter(r => !S.roleTouched.has(r.id)).length;
+  const rc = document.getElementById('c-roles');
+  if (!inc.length) { rc.className = 'chip'; rc.textContent = 'NO ROLES SET'; }
+  else if (untouched) { rc.className = 'chip warn'; rc.textContent = untouched + ' ROLE' + (untouched === 1 ? '' : 'S') + ' GUESSED'; }
+  else { rc.className = 'chip ok'; rc.textContent = 'ROLES DECLARED'; }
+  document.getElementById('b-go').disabled = S.busy || !inc.length;
+}
+
+function setBusy(on, label, note) {
+  S.busy = on;
+  document.getElementById('veil').classList.toggle('on', on);
+  if (label) document.getElementById('veil-t').textContent = label;
+  if (note) document.getElementById('veil-s').textContent = note;
+  status();
+}
+
+let flashTimer = 0;
+function flash(msg) {
+  const el = document.getElementById('c-weight');
+  clearTimeout(flashTimer);
+  el.textContent = msg.toUpperCase();
+  flashTimer = setTimeout(status, 2600);
+}
+
+/* ==========================================================================
+   6 · BOOT
+   ========================================================================== */
+render();
+document.getElementById('dev').classList.toggle('on', !EMBEDDED);
+if (!EMBEDDED) {
+  devLog('in', 'standalone', { note: 'no host — INTERPRET logs its payload' });
+  document.getElementById('veil-s').textContent =
+    'Standalone: this panel never calls the API. The payload is logged instead.';
+}
+post('ready', { capabilities: ['refs', 'roles', 'reorder', 'paste', 'downscale'] });
+</script>
+</body>
+</html>

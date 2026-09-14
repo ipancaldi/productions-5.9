@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Preview — Productions</title>
+<!--
+  ============================================================================
+  VIDEO PREVIEW — one picture: what the selected sequence is showing, right now.
+
+  WHAT IT IS. A monitor. It takes the sequence being edited in the Sequencing
+  Timeline, resolves what that sequence's picture is at the playhead, and shows
+  it — with the transport controls you need to drive a playhead and nothing else.
+
+  WHY IT IS NOT AN EDITOR. There is one place to cut a show and it is the
+  timeline. A monitor that can also trim is a second place for the sequence to be
+  changed, and the whole reason the timeline exists as its own panel is that the
+  cue should have exactly one home. So: no razor here, no trim handles, no clip
+  list, no per-surface tile wall, no export. Those were tried and they were the
+  wrong panel for all of them.
+
+  WHAT IT DOES OWN. Play, pause, stop, scrub — driving the take's clock, which is
+  forwarded to every other panel, so scrubbing here moves the picture on the LED
+  wall in the Scene Study and in every Camera POV at the same instant. And safe
+  areas, because "will the lower third survive the bezel" is a question you answer
+  by looking at a frame with guides on it, and there is nowhere else to look.
+
+  HOW THE PICTURE IS RESOLVED. Video takes priority, stacked the way the timeline
+  stacks it: the highest video track of the sequence that has a clip live at the
+  playhead is the picture. Audio tracks play underneath, mixed, unmuted — this is
+  the one panel where the show is meant to be heard.
+
+  It paints into a 2D canvas from the same `mediaAsset` bytes every panel gets.
+  That is a different job from sampling a VideoTexture in a WebGL scene, which is
+  why this and the Scene Study can both exist over one file.
+
+  IT RUNS STANDALONE. The protocol is SCENE-STUDY-BRIDGE.md.
+  ============================================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gray-300: #D0D5DD; --gray-400: #A2ABBA; --gray-500: #858FA2; --gray-550: #62748E;
+  --gray-600: #475467; --gray-650: #4F5D72; --gray-700: #344054; --gray-800: #1D2939;
+  --gray-900: #101828;
+
+  --surface-canvas: var(--gray-900); --surface-panel: var(--gray-800);
+  --surface-raised: var(--gray-700); --surface-selected: var(--gray-700);
+  --surface-emphasis: var(--gray-600); --surface-emphasis-hover: var(--gray-650);
+  --border-subtle: var(--gray-700); --border-strong: var(--gray-550); --border-emphasis: var(--gray-300);
+  --text-primary: var(--gray-300); --text-secondary: var(--gray-400);
+  --text-meta: var(--gray-500); --text-disabled: var(--gray-600);
+
+  --status-complete: #6BFFDC; --status-progress: #FF8559; --status-failed: #FF98F4;
+  --status-active: #FEFF34; --status-info: #D2B3ED; --status-live: #A74CEE;
+  --axis-x: #F04438; --axis-y: #2E90FA; --axis-z: #12B76A;
+  --scene-beam: #F79009; --scene-range: #D0D5DD;
+  --tint-emphasis: rgba(208,213,221,0.18); --tint-emphasis-s: rgba(208,213,221,0.08);
+  --ring-emphasis: rgba(208,213,221,0.65); --scrim: rgba(16,24,40,0.82);
+  --elev-3: 0 12px 24px rgba(16,24,40,0.50);
+
+  --space-2: 2px; --space-4: 4px; --space-6: 6px; --space-8: 8px; --space-10: 10px;
+  --space-12: 12px; --space-16: 16px;
+  --radius-xs: 3px; --radius-sm: 5px; --radius-card: 8px; --radius-pill: 999px;
+
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+  --t-body-m: 400 12px/18px var(--font);
+  --t-body-s: 400 10.5px/16px var(--font);
+  --t-label-m: 500 10.5px/14px var(--font); --tr-label-m: 0.07em;
+  --t-label-s: 500 9.5px/13px var(--font);  --tr-label-s: 0.09em;
+  --t-mono: 500 10.5px/14px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--surface-panel); color: var(--text-primary); font: var(--t-body-m);
+  overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased;
+}
+.app { height: 100%; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8); }
+
+.bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) var(--space-6); flex: 0 0 auto; }
+.btn {
+  font: var(--t-label-m); letter-spacing: var(--tr-label-m); color: var(--text-secondary);
+  background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 0 var(--space-8); height: 22px; display: inline-flex; align-items: center; gap: var(--space-4);
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+.btn.on { color: var(--gray-900); background: var(--text-primary); border-color: var(--text-primary); }
+.btn:disabled { color: var(--text-disabled); cursor: default; border-color: var(--border-subtle); }
+.sep { width: 1px; height: 16px; background: var(--border-subtle); margin: 0 var(--space-2); flex: 0 0 auto; }
+.grow { flex: 1 1 auto; }
+
+.st { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); display: inline-flex; align-items: center; gap: var(--space-4); }
+.st b { color: var(--text-secondary); font-weight: 600; }
+.st::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-disabled); }
+.st.live::before { background: var(--status-complete); }
+.st.alone::before { background: var(--status-active); }
+
+/* WHICH CUE IS ON THE MONITOR, and a way to change it.
+   It followed the timeline's selection and nothing else, on the argument that two
+   places to choose a cue is two places to be wrong about it. That was half right:
+   the argument holds for EDITING a cue and not for LOOKING at one. Checking what
+   ACT THREE looks like without leaving the cue you are cutting is the ordinary
+   thing to want, and walking to another panel to do it is the wrong answer.
+
+   So it is a picker with two states. FOLLOW is the default and keeps the old
+   behaviour exactly — the monitor shows whatever is being edited. Choosing a
+   sequence PINS it, and says so, because a monitor that has quietly stopped
+   following is a monitor that will lie to somebody. */
+.who { display: inline-flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.pick { display: inline-flex; align-items: center; gap: var(--space-4); cursor: pointer;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); height: 22px;
+  padding: 0 var(--space-6); background: transparent; max-width: 240px; }
+.pick:hover { border-color: var(--border-strong); }
+.pick.pinned { border-color: var(--status-active); }
+.pick b { font: var(--t-label-m); letter-spacing: var(--tr-label-m); text-transform: uppercase;
+  color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; min-width: 0; }
+.pick .caret { color: var(--text-meta); font-size: 9px; flex: 0 0 auto; }
+.pick .pin { font: var(--t-mono); font-size: 9px; color: var(--status-active); flex: 0 0 auto; }
+.who > span { font: var(--t-body-s); color: var(--text-disabled); white-space: nowrap; }
+
+.menu { position: fixed; z-index: 40; min-width: 210px; max-height: 320px; overflow: auto;
+  background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-card);
+  box-shadow: var(--elev-3); padding: var(--space-4); display: none; flex-direction: column; }
+.menu.open { display: flex; }
+.menu .k { font: var(--t-label-s); letter-spacing: var(--tr-label-s); color: var(--text-meta);
+  text-transform: uppercase; padding: var(--space-6) var(--space-8) var(--space-4); }
+.menu button { font: var(--t-body-s); color: var(--text-primary); background: transparent; border: 0;
+  text-align: left; padding: var(--space-6) var(--space-8); border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; justify-content: space-between; gap: var(--space-8); align-items: baseline; }
+.menu button:hover { background: var(--surface-selected); }
+.menu button.on { color: var(--gray-900); background: var(--text-primary); }
+.menu button.on i { color: var(--gray-800); }
+.menu button i { font-style: normal; color: var(--text-meta); font: var(--t-mono); }
+
+/* ---------- the monitor ----------
+   Black, centred, letterboxed to the source's own aspect. A monitor that lies
+   about aspect is worse than no monitor, because the wall it stands in for will
+   not lie. */
+.mon { flex: 1 1 auto; min-height: 80px; position: relative; background: #000;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-card); overflow: hidden; }
+.mon canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mon .dark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: var(--space-4); pointer-events: none;
+  font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase; color: var(--text-disabled); }
+.mon .dark i { font-style: normal; font: var(--t-body-s); letter-spacing: 0; text-transform: none;
+  color: var(--text-disabled); opacity: 0.8; }
+/* the source's own name and size, bottom-left, the way a monitor labels its feed */
+.mon .tag { position: absolute; left: var(--space-8); bottom: var(--space-6); z-index: 2;
+  font: var(--t-mono); font-size: 9.5px; color: var(--text-meta); pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
+
+/* ---------- the transport ----------
+   Stop · play/pause · timecode · scrub. Four controls, arranged the way an editor
+   expects to find them, and nothing between them.  */
+.tbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-8); }
+.tbtn { width: 30px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: transparent;
+  color: var(--text-secondary); cursor: pointer; flex: 0 0 auto; }
+.tbtn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+.tbtn:disabled { color: var(--text-disabled); cursor: default; }
+.tbtn.play.on { color: var(--gray-900); background: var(--text-primary); border-color: var(--text-primary); }
+.tbtn svg { width: 12px; height: 12px; fill: currentColor; display: block; }
+
+.tc { font: var(--t-mono); font-variant-numeric: tabular-nums; color: var(--text-primary);
+  white-space: nowrap; flex: 0 0 auto; }
+.tc i { color: var(--text-disabled); font-style: normal; }
+
+/* the scrub bar. It shows where the cuts ARE — the extents of the sequence's
+   clips, drawn into the track — because a bar with no marks on it tells you the
+   playhead is at 41% of nothing in particular. */
+.scrub { position: relative; flex: 1 1 auto; min-width: 40px; height: 26px; cursor: pointer; }
+.scrub .track { position: absolute; left: 0; right: 0; top: 9px; height: 8px;
+  background: var(--surface-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); }
+.scrub .seg { position: absolute; top: 10px; height: 6px; background: var(--surface-emphasis);
+  border-radius: 1px; pointer-events: none; }
+.scrub .seg.a { background: rgba(107,255,220,0.35); height: 3px; top: 11px; }
+.scrub .ph { position: absolute; top: 2px; bottom: 2px; width: 2px; margin-left: -1px;
+  background: var(--status-active); border-radius: 1px; pointer-events: none; }
+.scrub .ph::before { content: ''; position: absolute; top: -1px; left: -3px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid var(--status-active); }
+
+.foot { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.chip { font: var(--t-label-s); letter-spacing: var(--tr-label-s); text-transform: uppercase;
+  color: var(--text-meta); border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  padding: 1px var(--space-8); white-space: nowrap; }
+.chip b { color: var(--text-secondary); font-weight: 600; }
+.chip.ok { color: var(--status-complete); border-color: var(--status-complete); }
+.chip.warn { color: var(--status-progress); border-color: var(--status-progress); }
+
+.toast { position: fixed; left: 50%; bottom: var(--space-12); transform: translateX(-50%);
+  background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: var(--space-4) var(--space-12); font: var(--t-body-s); color: var(--text-primary);
+  box-shadow: var(--elev-3); opacity: 0; transition: opacity 0.18s; pointer-events: none; z-index: 50;
+  max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast.on { opacity: 1; }
+
+.dev { display: none; flex: 0 0 auto; max-height: 72px; overflow: auto;
+  border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); }
+.dev.on { display: block; }
+.dev .l { font: var(--t-mono); font-size: 9.5px; color: var(--text-disabled); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.dev .l.out { color: var(--text-meta); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="bar">
+    <span class="st" id="st">HOST <b>CONNECTING</b></span>
+    <span class="sep"></span>
+    <span class="who">
+      <span class="pick" id="pick" title="Which sequence is on the monitor — FOLLOW tracks whatever the timeline is editing">
+        <b id="seqname">—</b><span class="pin" id="seqpin"></span><span class="caret">▼</span>
+      </span>
+      <span id="seqwhere"></span>
+    </span>
+    <span class="grow"></span>
+    <button class="btn" id="b-safe" title="Action safe (90%) and title safe (80%), with the centre cross — will the lower third survive the bezel">SAFE AREAS</button>
+    <button class="btn" id="b-mute" title="Mute the sequence's audio tracks">AUDIO ON</button>
+  </div>
+
+  <div class="mon" id="mon">
+    <canvas id="cv"></canvas>
+    <div class="dark" id="dark">no picture<i id="darkwhy"></i></div>
+    <div class="tag" id="tag"></div>
+  </div>
+
+  <div class="tbar">
+    <button class="tbtn" id="b-stop" disabled title="Stop and return to the start">
+      <svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8"/></svg></button>
+    <button class="tbtn play" id="b-play" disabled title="Play / pause · SPACE">
+      <svg viewBox="0 0 12 12" id="playic"><path d="M3 2l7 4-7 4z"/></svg></button>
+    <span class="tc" id="tc">00:00.0 <i>/</i> 00:00.0</span>
+    <div class="scrub" id="scrub" title="Drag to scrub — every panel of this take follows this playhead">
+      <div class="track"></div>
+      <div class="ph" id="ph" style="left:0"></div>
+    </div>
+  </div>
+
+  <div class="foot" id="foot"></div>
+  <div class="dev" id="dev"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="menu" id="menu"></div>
+<div id="media" style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none"></div>
+
+<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg">
+<link rel="icon" type="image/png" sizes="96x96" href="favicon/favicon-96x96.png">
+
+<script>
+/* ==========================================================================
+   0 · THE WIRE — SCENE-STUDY-BRIDGE.md, version 1.
+   ========================================================================== */
+const BRIDGE_V = 1;
+const EMBEDDED = window.parent !== window;
+const MODE = 'preview';
+
+const post = (type, body) => {
+  const msg = Object.assign({ v: BRIDGE_V, type, mode: MODE }, body || {});
+  if (EMBEDDED) window.parent.postMessage(msg, '*');
+  devLog('out', type, body);
+};
+
+/* ==========================================================================
+   1 · STATE
+   Everything here is READ. This panel writes exactly one thing back — the
+   transport — because that is the one thing its controls are for.
+   ========================================================================== */
+const S = {
+  takeId: null,
+  seqs: [], cur: null,       // the grouping, as the timeline states it
+  pin: null,                 // a sequence chosen HERE — null means follow the timeline
+  rows: new Map(),           // trackId -> { seqId, kind, prio, start, in, out, dur, name }
+  media: new Map(),          // trackId -> { el, kind, name, ready }
+  targets: [],
+  live: false,
+};
+const T = { playing: false, t: 0, span: 60, loop: false, loopIn: 0, loopOut: null };
+const V = { safe: false, muted: false };
+
+const loopOut = () => (T.loopOut === null ? T.span : Math.min(T.loopOut, T.span));
+const rowLen = (r) => {
+  const len = (r.out || r.dur || 0) - (r.in || 0);
+  return isFinite(len) && len > 0 ? len : 0;
+};
+const rowEnd = (r) => r.start + rowLen(r);
+const isLive = (r) => T.t >= r.start && T.t < rowEnd(r);
+
+const el = (id) => document.getElementById(id);
+const mmss = (s) => {
+  s = Math.max(0, s || 0);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + (s % 60).toFixed(1).padStart(4, '0');
+};
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (m) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+let toastT = 0;
+function toast(msg) {
+  const t = el('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2400);
+}
+
+/* ==========================================================================
+   WHICH CUE IS ON THE MONITOR
+   FOLLOW used to mean "whatever the timeline is EDITING", which was wrong twice
+   over. It made the monitor go dark the moment the playhead ran out of the cue
+   somebody happened to have open — so playing a show of six sequences showed one
+   of them and black for the rest — and it made the picture depend on a selection
+   rather than on the clock, which is not what a program monitor is.
+
+   FOLLOW now means THE RUNNING ORDER: whatever is live at the playhead, whichever
+   sequence it belongs to. Press play at zero and the show plays through, cue after
+   cue, the monitor changing over as the playhead crosses from one into the next.
+
+   When two cues overlap in time the one that STARTED MOST RECENTLY is on air. That
+   is what a cut is, and it is the same rule the video stack uses one level down.
+   When nothing at all is live — parked in a gap, or before the first cue — it
+   falls back to the cue the timeline is editing, so the monitor shows the thing
+   being worked on rather than a black rectangle.
+
+   PIN overrides all of it: that sequence, whatever the clock is doing. Checking
+   what ACT THREE looks like without leaving the cue you are cutting is the whole
+   reason the picker exists.
+   ========================================================================== */
+function activeSeqId() {
+  if (S.pin && S.seqs.some(q => q.id === S.pin)) return S.pin;
+  if (S.pin) S.pin = null;                    // pinned to a cue that has been deleted
+  let best = null;
+  S.rows.forEach((r) => {
+    if (r.kind !== 'video' || r.hidden || !isLive(r)) return;
+    if (!best || r.start > best.start) best = r;
+  });
+  /* a cue with only audio under the playhead is still the cue that is running */
+  if (!best) {
+    S.rows.forEach((r) => {
+      if (r.hidden || !isLive(r)) return;
+      if (!best || r.start > best.start) best = r;
+    });
+  }
+  return best ? best.seqId : S.cur;
+}
+const shownId = () => activeSeqId();
+const curSeq = () => S.seqs.find(q => q.id === shownId()) || null;
+/* the rows of the sequence on the monitor, and only those: this panel shows ONE
+   cue, which is the cue being edited */
+const myRows = () => { const id = shownId(); return [...S.rows.entries()].filter(([, r]) => r.seqId === id); };
+/* the scrub bar shows the WHOLE SHOW while following — every cue's clips, so the
+   bar is a map of the running order rather than of one cue in it — and only the
+   pinned cue when one is held */
+const barRows = () => S.pin ? myRows() : [...S.rows.entries()];
+
+/* ==========================================================================
+   2 · WHAT ARRIVES
+   ========================================================================== */
+const IN = {
+  hello(m) {
+    if (m.tokens) applyTokens(m.tokens);
+    S.live = true; status();
+  },
+  scene(m) { S.takeId = m.takeId || null; paintFoot(); },
+  routeTargets(m) { S.targets = m.targets || []; paintFoot(); },
+  mediaAsset(m) {
+    if (!m || !m.trackId || !m.bytes) return;
+    /* KEYED BY CLIP. A video lane carries several clips one after another, so an
+       element per LANE could only ever hold the last file to arrive on it. No `clipId`
+       means the first clip on that lane, which is what the message meant before. */
+    install(m.clipId || m.trackId, m.bytes, m.name, m.kind);
+  },
+  transport(m) {
+    if (typeof m.t === 'number') T.t = m.t;
+    if (typeof m.span === 'number' && isFinite(m.span) && m.span > 0) T.span = m.span;
+    if (typeof m.loop === 'boolean') T.loop = m.loop;
+    if (typeof m.loopIn === 'number') T.loopIn = m.loopIn;
+    if (m.loopOut !== undefined) T.loopOut = m.loopOut;
+    if (typeof m.playing === 'boolean' && m.playing !== T.playing) {
+      T.playing = m.playing; lastTick = performance.now(); paintChrome();
+    }
+  },
+  /* the sequence, whole, from the timeline. `cur` is which one is being edited —
+     followed rather than chosen, because the cue is chosen in one place. */
+  clips(m) {
+    if (m.sequences) S.seqs = m.sequences;
+    if (m.cur !== undefined) S.cur = m.cur;
+    if (!S.cur && S.seqs.length) S.cur = S.seqs[0].id;
+    if (m.clips) {
+      S.rows.clear();
+      m.clips.forEach(c => S.rows.set(c.clipId || c.trackId, {
+        trackId: c.trackId,
+        seqId: c.seqId, kind: c.kind || 'video', prio: c.prio || 0, name: c.name,
+        start: c.start || 0, in: c.in || 0, out: c.out || 0, dur: c.dur || 0,
+        media: c.media || c.kind || 'video',
+        fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0, blend: c.blend || 'normal',
+        easeIn: c.easeIn === undefined ? 0.5 : c.easeIn,
+        easeOut: c.easeOut === undefined ? 0.5 : c.easeOut,
+        hidden: !!c.hidden,
+      }));
+      /* ---------- AND THE ELEMENTS OF CLIPS THAT ARE GONE ----------
+         A lane holds several clips now, so a clip deleted over there leaves an element and
+         an object URL behind here with no row to draw it — invisible, and permanent. Only
+         a clip whose row has been seen at least once is swept, so bytes that arrive ahead
+         of their row are not thrown away the moment they land. */
+      S.media.forEach((rec, id) => { if (S.rows.has(id)) rec.seen = true; });
+      [...S.media.entries()].forEach(([id, rec]) => {
+        if (!rec.seen || S.rows.has(id)) return;
+        if (rec.el.pause) rec.el.pause();
+        URL.revokeObjectURL(rec.el.src);
+        rec.el.remove();
+        S.media.delete(id);
+      });
+    }
+    paintScrub(); paintFoot(); paintHeader();
+  },
+  /* the timeline can hand the monitor back: when somebody opens a different cue
+     over there and this panel is FOLLOWING, `cur` above already did it — this is
+     for the case where the timeline wants the pin released explicitly */
+  unpinPreview() { S.pin = null; paintHeader(); paintScrub(); paintFoot(); },
+};
+
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || d.v !== BRIDGE_V || !IN[d.type]) return;
+  devLog('in', d.type, d);
+  IN[d.type](d);
+});
+
+function applyTokens(tokens) {
+  Object.entries(tokens).forEach(([k, v]) => {
+    if (k.startsWith('--') && typeof v === 'string') document.documentElement.style.setProperty(k, v);
+  });
+}
+const devLines = [];
+function devLog(dir, type, body) {
+  if (EMBEDDED) return;
+  devLines.unshift('<div class="l ' + dir + '">' + (dir === 'out' ? '→ ' : '← ') + type + ' '
+    + (body ? JSON.stringify(body, (k, v) => v instanceof ArrayBuffer ? '[' + v.byteLength + ' bytes]' : v).slice(0, 180) : '') + '</div>');
+  devLines.length = Math.min(devLines.length, 30);
+  el('dev').innerHTML = devLines.join('');
+}
+
+/* ==========================================================================
+   3 · THE FILES
+   Its own element per CLIP, from the same bytes every panel gets. Video is muted
+   and scrubbed frame-by-frame to compose the monitor; audio is the one thing in
+   this workspace that is actually meant to be heard, so it is not.
+   ========================================================================== */
+function install(clipId, bytes, name, kind) {
+  const isAudio = kind === 'audio';
+  const isStill = kind === 'image';
+  const prev = S.media.get(clipId);
+  if (prev && prev.name === name) return;             // already have this file on this clip
+  const node = document.createElement(isAudio ? 'audio' : isStill ? 'img' : 'video');
+  node.src = URL.createObjectURL(new Blob([bytes]));
+  if (!isStill) { node.muted = isAudio ? V.muted : true; node.playsInline = true; node.preload = 'auto'; }
+  el('media').appendChild(node);
+  if (prev) { if (prev.el.pause) prev.el.pause(); URL.revokeObjectURL(prev.el.src); prev.el.remove(); }
+  const rec = { el: node, kind: isAudio ? 'audio' : isStill ? 'image' : 'video',
+                name: name || 'clip', ready: false };
+  S.media.set(clipId, rec);
+  /* A STILL IS READY WHEN IT HAS DECODED. There is no duration to wait for and no
+     clock to park it on: it is the same frame for as long as it is held, which is
+     the one thing about a still that makes it simpler than everything else here. */
+  if (isStill) {
+    const ready = () => { rec.ready = true; paintFoot(); };
+    node.addEventListener('load', ready);
+    node.addEventListener('error', () => toast('could not decode ' + rec.name));
+    if (node.complete && node.naturalWidth) ready();
+    return;
+  }
+
+  /* `loadedmetadata` does not promise a duration, and a WebM from a recorder never
+     resolves one until something seeks past the end — see the same note in the
+     timeline. The monitor only needs READINESS, but it needs it to be true. */
+  let probed = false;
+  const settle = () => {
+    if (node.readyState >= 1) rec.ready = true;
+    if (!isFinite(node.duration) && !probed) {
+      probed = true;
+      try { node.currentTime = 1e101; } catch (e) {}
+    } else if (probed && isFinite(node.duration)) {
+      probed = false;
+      try { node.currentTime = 0; } catch (e) {}
+    }
+    paintFoot();
+  };
+  node.addEventListener('loadedmetadata', settle);
+  node.addEventListener('durationchange', settle);
+  node.addEventListener('error', () => toast('could not decode ' + rec.name));
+}
+
+/* ==========================================================================
+   4 · WHAT THE PICTURE IS
+   VIDEO TAKES PRIORITY, stacked: the higher video track draws over the lower one.
+   `prio` comes from the timeline, which is the panel that knows the stack order —
+   resolving it here from row order would be a second opinion about the same fact.
+
+   BUT NOT ONLY THE TOP ONE. A fade is the picture on its way to or from nothing,
+   so a V2 that is half faded out is half transparent, and what shows through it is
+   V1 — which is what a crossfade IS. So every live layer is drawn, bottom up, each
+   at its own alpha. A layer at full opacity covers everything under it anyway, so
+   the common case costs one extra `drawImage` and no thought.
+   ========================================================================== */
+function videoStack() {
+  return myRows()
+    .filter(([, r]) => r.kind === 'video' && !r.hidden && isLive(r) && alphaOf(r) > 0.004)
+    /* bottom layer first — and where two clips share a lane, and so a priority, the
+       one that starts later is the one that cut in */
+    .sort((a, b) => a[1].prio - b[1].prio || a[1].start - b[1].start);
+}
+/* the top layer that is actually contributing, for the label and for what the room
+   would be showing */
+function pictureRow() {
+  const st = videoStack();
+  if (!st.length) return null;
+  const [trackId, r] = st[st.length - 1];
+  return { trackId, r };
+}
+/* THE RAMP. `ease` bends it: 0.5 is a straight line, higher holds and then drops,
+   lower leaves at once and lingers — the same quadratic the timeline draws, so the
+   shape on the block is the shape on the screen. */
+function ramp(p, ease) {
+  const t = Math.max(0, Math.min(1, p));
+  const e = ease === undefined ? 0.5 : ease;
+  return t * t * (1 - e) * 2 + t * (1 - (1 - e) * 2) + (e - 0.5) * 2 * t * (1 - t);
+}
+function alphaOf(r) {
+  const len = rowLen(r);
+  if (!len) return 0;
+  const into = T.t - r.start, left = r.start + len - T.t;
+  let a = 1;
+  if (r.fadeIn > 0.001) a = Math.min(a, ramp(into / r.fadeIn, r.easeIn));
+  if (r.fadeOut > 0.001) a = Math.min(a, ramp(left / r.fadeOut, r.easeOut));
+  return Math.max(0, Math.min(1, a));
+}
+const sourceTime = (r) => Math.max(0, Math.min(r.dur, (T.t - r.start) + (r.in || 0)));
+
+/* ==========================================================================
+   5 · THE CLOCK
+   ⚠ NOT requestAnimationFrame — see the long note in the timeline. rAF fires only
+   while the document is being painted, and this panel both follows the take's
+   clock and drives it from its own transport. An interval keeps running when
+   frames do not, and the time comes from the wall clock rather than tick counting.
+   ========================================================================== */
+let lastTick = performance.now(), lastBeat = 0, driving = false;
+function step() {
+  if (T.playing) {
+    const now = performance.now();
+    /* past a couple of seconds this is a STALL, not a slow tick: the document was
+       suspended, and inventing that time would jump the show past cues nobody saw */
+    const gap = (now - lastTick) / 1000;
+    if (gap <= 2) T.t += gap;
+    lastTick = now;
+    if (T.loop) { if (T.t >= loopOut() || T.t < T.loopIn) T.t = T.loopIn; }
+    else if (T.t >= T.span) { T.t = T.span; T.playing = false; paintChrome(); if (driving) publishTransport(); }
+    if (driving && now - lastBeat > 1500) { lastBeat = now; publishTransport(); }
+  } else {
+    lastTick = performance.now();
+  }
+  syncSources();
+  paint();
+  paintClock();
+  /* the cue on air is a function of the CLOCK now, so the label naming it has to be
+     repainted when it changes rather than when a message happens to arrive */
+  const on = shownId();
+  if (on !== lastShown) { lastShown = on; paintHeader(); paintFoot(); paintScrub(); }
+}
+let lastShown = null;
+setInterval(step, 33);
+
+function publishTransport() {
+  post('transport', {
+    playing: T.playing, t: +T.t.toFixed(3), span: T.span,
+    loop: T.loop, loopIn: T.loopIn, loopOut: T.loopOut,
+  });
+}
+
+/* the sources are PARKED on the show's clock rather than played freely, which is
+   what makes the picture and the audio the same instant */
+function syncSources() {
+  myRows().forEach(([trackId, r]) => {
+    const m = S.media.get(trackId);
+    if (!m || m.kind === 'image') return;             // a still has nothing to seek
+    const node = m.el;
+    /* every CONTRIBUTING layer decodes — a crossfade needs both halves of it — but
+       a hidden layer and one that has faded to nothing do not, which is what keeps
+       six stacked tracks from being six decodes for one picture */
+    const wanted = r.kind === 'audio' ? isLive(r)
+      : (!r.hidden && isLive(r) && alphaOf(r) > 0.004);
+    if (!wanted) { if (!node.paused) node.pause(); return; }
+    if (r.kind === 'audio') node.muted = V.muted;
+    const want = sourceTime(r);
+    if (T.playing) {
+      if (node.paused) { try { node.currentTime = want; } catch (e) {} node.play().catch(() => {}); }
+      else if (Math.abs(node.currentTime - want) > 0.3) { try { node.currentTime = want; } catch (e) {} }
+    } else {
+      if (!node.paused) node.pause();
+      if (Math.abs(node.currentTime - want) > 0.04) { try { node.currentTime = want; } catch (e) {} }
+    }
+  });
+}
+
+/* ==========================================================================
+   6 · PAINTING THE MONITOR
+   ========================================================================== */
+function paint() {
+  const cv = el('cv'), cx = cv.getContext('2d');
+  const box = cv.getBoundingClientRect();
+  const w = Math.max(2, Math.round(box.width)), h = Math.max(2, Math.round(box.height));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  cx.fillStyle = '#000'; cx.fillRect(0, 0, w, h);
+
+  const stack = videoStack().filter(([id]) => {
+    const m = S.media.get(id);
+    if (!m) return false;
+    return m.kind === 'image' ? (m.el.complete && m.el.naturalWidth > 0) : m.el.readyState >= 2;
+  });
+  const pic = pictureRow();
+  const m = pic && S.media.get(pic.trackId);
+  const dark = el('dark'), why = el('darkwhy'), tag = el('tag');
+
+  if (!stack.length) {
+    dark.style.display = 'flex';
+    tag.textContent = '';
+    why.textContent = !S.seqs.length ? 'nothing sequenced yet'
+      : !myRows().length ? 'this sequence has no clips'
+      : !pic ? 'no video clip under the playhead'
+      : (m && m.kind !== 'image' && m.el.readyState < 2) ? 'reading ' + m.name + '…'
+      : 'faded to black';
+    /* the guides still draw over black: framing a shot that has not loaded yet is
+       a thing people do, and a monitor that hides its guides when the feed drops
+       is a monitor that lost the one thing it was being used for */
+    if (V.safe) safeAreas(cx, w, h, w, h);
+    return;
+  }
+  dark.style.display = 'none';
+
+  /* the frame is sized by the TOP layer: it is the one whose aspect the wall is
+     being asked to show, and letterboxing each layer to its own would make a
+     crossfade between a 16:9 and a 4:3 jump about inside the frame */
+  const vw = (m.kind === 'image' ? m.el.naturalWidth : m.el.videoWidth) || 16;
+  const vh = (m.kind === 'image' ? m.el.naturalHeight : m.el.videoHeight) || 9;
+  const s = Math.min(w / vw, h / vh);
+  const dw = vw * s, dh = vh * s;
+  const dx = (w - dw) / 2, dy = (h - dh) / 2;
+  /* HOW EACH LAYER MIXES WITH THE ONE UNDER IT. The mode is the timeline's decision and
+     arrives on the row as the canvas operator itself, so this panel does not own a
+     vocabulary that could drift from the one the wall uses — see BLEND over there.
+
+     THE BOTTOM LAYER IS ALWAYS `source-over`. There is nothing beneath it but the black
+     this canvas was just filled with, and against black MULTIPLY is black while ADD is a
+     no-op: honouring the mode there would make the bottom layer disappear for a reason
+     invisible on screen. The timeline's tag says so on that row rather than pretending. */
+  const COMP = { normal: 'source-over', add: 'lighter', screen: 'screen', multiply: 'multiply' };
+  stack.forEach(([id, r], i) => {
+    const mm = S.media.get(id);
+    cx.globalAlpha = alphaOf(r);
+    cx.globalCompositeOperation = i === 0 ? 'source-over' : (COMP[r.blend] || 'source-over');
+    try { cx.drawImage(mm.el, dx, dy, dw, dh); } catch (e) { /* a frame that will not paint is not fatal */ }
+  });
+  cx.globalAlpha = 1;
+  /* PUT IT BACK before the guides and the safe areas are drawn over the picture — a
+     `lighter` left on the context would make a white 80% box add itself to the frame. */
+  cx.globalCompositeOperation = 'source-over';
+  const mixing = stack.length > 1;
+  tag.textContent = (mixing ? stack.map(([, r]) => r.name).join('  ×  ') + '  ' : m.name + '  ')
+    + vw + '×' + vh + (mixing ? '  MIX' : '');
+  /* THE GUIDES BELONG TO THE PICTURE, NOT THE PANEL. Drawn inside the letterbox,
+     so 80% means 80% of the frame that will be on the wall rather than 80% of
+     however wide somebody happens to have dragged this panel. */
+  if (V.safe) safeAreas(cx, dx, dy, dw, dh);
+}
+
+/* ---------- safe areas ----------
+   Action safe 90%, title safe 80% — the two that broadcast and every LED vendor's
+   bezel spec are quoted against — plus the centre cross, which is what you line a
+   logo up on. No thirds, no grid: those are composition aids for shooting, and
+   this is a monitor for checking a cue. */
+function safeAreas(cx, x, y, w, h) {
+  const box = (pctW, dash) => {
+    const iw = w * pctW, ih = h * pctW;
+    cx.setLineDash(dash);
+    cx.strokeRect(Math.round(x + (w - iw) / 2) + 0.5, Math.round(y + (h - ih) / 2) + 0.5,
+                  Math.round(iw), Math.round(ih));
+  };
+  cx.save();
+  cx.lineWidth = 1;
+  cx.strokeStyle = 'rgba(254,255,52,0.55)';
+  box(0.9, []);
+  cx.strokeStyle = 'rgba(254,255,52,0.35)';
+  box(0.8, [4, 4]);
+  /* the centre cross */
+  cx.setLineDash([]);
+  cx.strokeStyle = 'rgba(254,255,52,0.4)';
+  const cxm = Math.round(x + w / 2) + 0.5, cym = Math.round(y + h / 2) + 0.5;
+  const arm = Math.min(w, h) * 0.04;
+  cx.beginPath();
+  cx.moveTo(cxm - arm, cym); cx.lineTo(cxm + arm, cym);
+  cx.moveTo(cxm, cym - arm); cx.lineTo(cxm, cym + arm);
+  cx.stroke();
+  cx.restore();
+}
+
+function paintClock() {
+  el('tc').innerHTML = mmss(T.t) + ' <i>/</i> ' + mmss(T.span);
+  el('ph').style.left = (Math.max(0, Math.min(1, T.t / Math.max(0.001, T.span))) * 100) + '%';
+}
+
+/* the scrub bar's marks: where this sequence's clips actually are */
+function paintScrub() {
+  const bar = el('scrub');
+  [...bar.querySelectorAll('.seg')].forEach(n => n.remove());
+  barRows().forEach(([, r]) => {
+    const len = rowLen(r); if (!len) return;
+    const seg = document.createElement('div');
+    seg.className = 'seg' + (r.kind === 'audio' ? ' a' : '');
+    seg.style.left = (r.start / Math.max(0.001, T.span) * 100) + '%';
+    seg.style.width = Math.max(0.4, len / Math.max(0.001, T.span) * 100) + '%';
+    bar.insertBefore(seg, el('ph'));
+  });
+}
+
+function paintHeader() {
+  const q = curSeq();
+  const pinned = !!(S.pin && q && q.id === S.pin);
+  /* the name is always the cue you are LOOKING AT — following or held, that is the
+     honest label. What changes is the badge beside it: PIN says it is being held
+     there, FOLLOW says it will change under you when the playhead crosses into the
+     next cue. A monitor that has quietly stopped following, or quietly started, is
+     a monitor that will lie to somebody. */
+  el('seqname').textContent = q ? q.name : (S.seqs.length ? '—' : 'NOTHING SEQUENCED');
+  el('pick').classList.toggle('pinned', pinned);
+  el('seqpin').textContent = pinned ? 'PIN' : (S.seqs.length > 1 ? 'FOLLOW' : '');
+  const where = q && q.route ? routeLabel(q.route) : '';
+  el('seqwhere').textContent = q ? (where ? '→ ' + where : '→ no output set') : '';
+}
+
+/* ---------- CHOOSING WHAT TO WATCH ----------
+   Picking a sequence does three things, and it has to do all three or it is a
+   half-measure: it pins the monitor to that cue, it tells the TIMELINE to open the
+   same one — so the two panels are looking at the same thing rather than quietly
+   disagreeing — and it parks the playhead inside it if the playhead is somewhere
+   else entirely. That last one is what "sync with that sequence" means in practice:
+   choosing ACT THREE and getting a black frame because the clock is still at 00:02
+   is not previewing anything. */
+function closeMenu() { el('menu').classList.remove('open'); }
+window.addEventListener('pointerdown', (e) => { if (!e.target.closest('.menu, #pick')) closeMenu(); }, true);
+
+el('pick').addEventListener('click', () => {
+  if (!S.seqs.length) return toast('nothing sequenced yet');
+  const m = el('menu');
+  const item = (v, label, note, on) =>
+    '<button data-v="' + esc(v) + '" class="' + (on ? 'on' : '') + '">' + esc(label)
+    + (note ? '<i>' + esc(note) + '</i>' : '') + '</button>';
+  const curName = (S.seqs.find(q => q.id === S.cur) || {}).name || '—';
+  /* FOLLOW is the running order, not "whatever is being edited" — so the note on
+     it says how many cues that is, and the one currently on air is marked. */
+  m.innerHTML = '<span class="k">On the monitor</span>'
+    + item('', 'FOLLOW THE TIMELINE',
+           S.seqs.length + (S.seqs.length === 1 ? ' CUE' : ' CUES, IN ORDER'), !S.pin)
+    + '<span class="k">Or hold one</span>'
+    + S.seqs.map(q => item(q.id, q.name,
+        (!S.pin && q.id === activeSeqId()) ? 'ON AIR'
+          : (q.route ? routeLabel(q.route) : 'no output'), S.pin === q.id)).join('');
+  void curName;
+  const r = el('pick').getBoundingClientRect();
+  m.classList.add('open');
+  const h = Math.min(320, m.scrollHeight);
+  m.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 224)) + 'px';
+  m.style.top = Math.max(4, Math.min(r.bottom + 4, window.innerHeight - h - 6)) + 'px';
+  m.onclick = (ev) => {
+    const b = ev.target.closest('button'); if (!b) return;
+    closeMenu();
+    pickSeq(b.dataset.v || null);
+  };
+});
+
+function pickSeq(id) {
+  S.pin = id;
+  const q = curSeq();
+  if (!q) { paintHeader(); paintScrub(); paintFoot(); return; }
+  /* tell the timeline, so the panel that EDITS the cue is on the same one. It is a
+     request, not an assertion: the timeline owns the grouping and answers with the
+     next `clips` like it does for every other change. */
+  if (id) post('selectSequence', { seqId: id });
+  /* and put the clock inside it, if it is not already */
+  const rows = myRows().map(([, r]) => r);
+  const from = rows.length ? Math.min(...rows.map(r => r.start)) : (q.cue ? q.cue.at : 0);
+  const to = rows.length ? Math.max(...rows.map(r => r.start + rowLen(r))) : from;
+  if (T.t < from - 0.001 || T.t > to + 0.001) scrubTo(q.cue ? q.cue.at : from);
+  paintHeader(); paintScrub(); paintFoot();
+  toast(id ? 'monitoring ' + q.name : 'following the timeline · ' + q.name);
+}
+function routeLabel(route) {
+  const d = S.targets.find(x => x.id === route);
+  return d ? (d.short || d.label) : route;
+}
+
+function paintChrome() {
+  const any = myRows().length > 0;
+  el('b-play').disabled = !any;
+  el('b-stop').disabled = !any;
+  el('b-play').classList.toggle('on', T.playing);
+  el('playic').innerHTML = T.playing
+    ? '<rect x="2.5" y="2" width="2.5" height="8"/><rect x="7" y="2" width="2.5" height="8"/>'
+    : '<path d="M3 2l7 4-7 4z"/>';
+  el('b-safe').classList.toggle('on', V.safe);
+  el('b-mute').textContent = V.muted ? 'AUDIO OFF' : 'AUDIO ON';
+  el('b-mute').classList.toggle('on', !V.muted);
+}
+
+function status() {
+  const st = el('st');
+  st.className = 'st ' + (EMBEDDED ? (S.live ? 'live' : '') : 'alone');
+  st.innerHTML = EMBEDDED ? 'HOST <b>' + (S.live ? 'LIVE' : 'CONNECTING') + '</b>'
+                          : 'STANDALONE <b>MOCK</b>';
+}
+
+function paintFoot() {
+  const rows = myRows();
+  const v = rows.filter(([, r]) => r.kind === 'video').length;
+  const a = rows.length - v;
+  const q = curSeq();
+  const bits = [];
+  bits.push('<span class="chip"><b>' + v + '</b> VIDEO · <b>' + a + '</b> AUDIO</span>');
+  const st = videoStack();
+  const pic = pictureRow();
+  bits.push('<span class="chip">PICTURE <b>' + (pic ? esc(pic.r.name) : 'none') + '</b>'
+    + (st.length > 1 ? ' · <b>MIXING ' + st.length + '</b>' : '') + '</span>');
+  const hid = rows.filter(([, r]) => r.hidden).length;
+  if (hid) bits.push('<span class="chip warn"><b>' + hid + '</b> HIDDEN</span>');
+  if (!S.pin && S.seqs.length > 1) bits.push('<span class="chip">FOLLOWING <b>' + S.seqs.length + '</b> CUES</span>');
+  if (q) bits.push('<span class="chip ' + (q.route ? 'ok' : 'warn') + '">OUTPUT <b>'
+    + (q.route ? routeLabel(q.route) : 'NOT SET') + '</b></span>');
+  if (V.safe) bits.push('<span class="chip">SAFE <b>90% · 80%</b></span>');
+  el('foot').innerHTML = bits.join('');
+  paintChrome();
+}
+
+/* ==========================================================================
+   7 · THE CONTROLS
+   ========================================================================== */
+function setPlaying(on) {
+  if (T.playing === on) return;
+  T.playing = on; lastTick = performance.now(); driving = true;
+  paintChrome(); publishTransport();
+}
+function scrubTo(sec) {
+  T.t = Math.max(0, Math.min(T.span, sec));
+  driving = true; publishTransport(); paintClock();
+}
+
+el('b-play').addEventListener('click', () => setPlaying(!T.playing));
+el('b-stop').addEventListener('click', () => { setPlaying(false); scrubTo(0); });
+el('b-safe').addEventListener('click', () => { V.safe = !V.safe; paintFoot(); });
+el('b-mute').addEventListener('click', () => {
+  V.muted = !V.muted;
+  S.media.forEach(m => { if (m.kind === 'audio') m.el.muted = V.muted; });
+  paintChrome();
+});
+
+/* the scrub bar: press anywhere to go there, drag to scrub. The pointer is
+   captured so a drag that leaves the bar keeps scrubbing rather than stopping
+   dead at the edge, which is what every editor does and what the hand expects. */
+(() => {
+  const bar = el('scrub');
+  const at = (clientX) => {
+    const r = bar.getBoundingClientRect();
+    scrubTo(((clientX - r.left) / Math.max(1, r.width)) * T.span);
+  };
+  bar.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    bar.setPointerCapture(e.pointerId);
+    at(e.clientX);
+    const onMove = (ev) => at(ev.clientX);
+    const onUp = (ev) => {
+      bar.releasePointerCapture(ev.pointerId);
+      bar.removeEventListener('pointermove', onMove);
+      bar.removeEventListener('pointerup', onUp);
+    };
+    bar.addEventListener('pointermove', onMove);
+    bar.addEventListener('pointerup', onUp);
+  });
+})();
+
+/* the panel claims the keyboard when it is touched: an iframe nobody has clicked
+   in gets no key events, which is why SPACE did nothing until somebody happened to
+   press a button first. And a button that was just pressed gives it back, so the
+   next SPACE is a transport command rather than a second press of that button. */
+window.addEventListener('pointerdown', () => { try { window.focus(); } catch (e) {} }, true);
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b && b.blur) setTimeout(() => b.blur(), 0);
+});
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') {
+    e.preventDefault();
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    setPlaying(!T.playing);
+    return;
+  }
+  else if (k === 'home') scrubTo(0);
+  else if (k === 'arrowleft') scrubTo(T.t - (e.shiftKey ? 5 : 1));
+  else if (k === 'arrowright') scrubTo(T.t + (e.shiftKey ? 5 : 1));
+});
+
+/* ==========================================================================
+   8 · STANDALONE
+   ========================================================================== */
+if (!EMBEDDED) {
+  el('dev').classList.add('on');
+  S.takeId = 'mock';
+  S.seqs = [{ id: 'q1', name: 'SEQUENCE 1', route: 'mock-led1', crop: null, tracks: [] }];
+  S.cur = 'q1';
+  S.targets = [{ id: 'mock-led1', label: 'LED 1', req: 'led' }];
+  S.live = true;
+  toast('standalone — drop a video file to put it on the monitor');
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0]; if (!f) return;
+    const audio = /^audio\//.test(f.type);
+    const id = 'mock-' + S.media.size;
+    f.arrayBuffer().then(buf => {
+      install(id, buf, f.name, audio ? 'audio' : 'video');
+      const m = S.media.get(id);
+      const settle = () => {
+        const d = m.el.duration;
+        if (!isFinite(d) || d <= 0) return;
+        S.rows.set(id, { seqId: 'q1', kind: audio ? 'audio' : 'video', prio: audio ? 0 : S.rows.size + 1,
+                         name: f.name, start: 0, in: 0, out: d, dur: d });
+        T.span = Math.max(30, Math.ceil(d / 10) * 10);
+        paintScrub(); paintFoot(); paintHeader();
+      };
+      m.el.addEventListener('durationchange', settle);
+      m.el.addEventListener('loadedmetadata', settle);
+    });
+  });
+}
+status(); paintHeader(); paintFoot(); paintScrub();
+
+post('ready', { capabilities: ['monitor', 'transport', 'scrub', 'safe-areas'] });
+</script>
+</body>
+</html>

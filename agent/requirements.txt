@@ -1,0 +1,14 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+anthropic>=0.116
+
+# v5.5 · reading a reference sketch. See VISION.md.
+# numpy and Pillow alone are enough to TRACE a drawing; torch/transformers add the
+# model that says what each traced shape is. Both halves degrade to a named state.
+numpy>=2.0
+Pillow>=11
+torch>=2.4
+torchvision>=0.19
+transformers>=4.50
+accelerate>=1.0
+num2words>=0.5

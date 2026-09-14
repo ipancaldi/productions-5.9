@@ -1,0 +1,25 @@
+# ── macOS ──────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Media assets: ~630 MB of video, skies and models. Kept local.
+# GitHub warns over 50 MB a file and refuses over 100 MB (HDR/twilight.hdr
+# alone is 87 MB). The panels read these from disk at runtime; nothing in
+# the code needs them to be in the repo.
+Content/
+HDR/*.hdr
+HDR/*.exr
+glb/**/*.glb
+
+# ── Python: virtualenv, bytecode, the SmolVLM symlink, logs ────────────
+agent/.venv/
+agent/models
+agent/inbox/
+__pycache__/
+*.pyc
+*.log
+
+# ── Build output: the Swift helper is source-tracked, the binary is not ─
+agent/native/frames2mp4
+
+# ── Timestamped .bak copies. Git history replaces these. ───────────────
+_archive/
