@@ -2318,8 +2318,14 @@ async function discoverSkies() {
         list = named.concat(found.filter(x => !have.has(x.file.toLowerCase())));
       }
     } catch (err) { /* file:// lands here, and so does a server with listings off */ }
-    /* 3 · no listing at all: the manifest is the only thing left to ask for */
-    if (!hadListing) list = await asManifest(dir);
+    /* 3 · no listing at all — OR a listing that answered with no maps in it: the manifest is
+       the only thing left to ask for. GITHUB PAGES SERVES index.json AS THE DIRECTORY INDEX.
+       `fetch('HDR/')` there comes back 200 with the manifest's own JSON as the body, which
+       goes through the href scrape above and yields nothing, and the old test — did the
+       directory answer — then skipped the manifest and left the sky row empty on a host that
+       was serving the manifest all along. "The listing answered" is not "the listing had
+       maps", and only the second one has earned the right to skip step 3. */
+    if (!list || !list.length) list = await asManifest(dir);
     return { list, hadListing };
   };
   /* EVERY CANDIDATE, IN ORDER, UNTIL ONE HAS MAPS IN IT. A folder that answers but is empty is
