@@ -3619,7 +3619,10 @@ const hdrUrl = (e) => (e && e.hdr) ? (e.hdr.url || (SKY_DIR + e.hdr.file)) : nul
 /* v2: every reading taken before the EXR flip was fixed is upside down — sky and ground the
    wrong way round, and the light aimed at the land. A version in the key is cheaper than a
    migration and it cannot be got wrong. */
-const SKY_MEM = 'ss.sky.v2.';
+/* v3: every reading stored under v2 was taken with the row order the orientation bug above
+   produced, so its sky, its ground and the sun direction it carries are all from the wrong
+   hemisphere. Retired rather than migrated — they are a measurement, and re-measuring is free. */
+const SKY_MEM = 'ss.sky.v3.';
 function skyRemember(file, m) {
   if (!file || !m) return;
   try { localStorage.setItem(SKY_MEM + file.toLowerCase(), JSON.stringify(
@@ -3638,7 +3641,10 @@ function skyRecall(file) {
    with a lit floor. So the decision is one click, kept per FILE rather than per preset (the
    same map can be two presets) and separately from the reading, which is a measurement and not
    a choice. */
-const SKY_FLIP = 'ss.skyflip.v1.';
+/* v2: a TURN OVER saved under v1 was almost certainly somebody correcting the bug above by
+   hand. Kept on, it would now turn a correct map upside down — so the old key is abandoned and
+   everything starts from how the loader delivers it, which is right. */
+const SKY_FLIP = 'ss.skyflip.v2.';
 const flipPref = (file) => {
   if (!file) return false;
   try { return localStorage.getItem(SKY_FLIP + file.toLowerCase()) === '1'; } catch (err) { return false; }
@@ -3709,27 +3715,28 @@ function adoptSky(name, tex, e, srcLabel, isExr) {
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = false;
   tex.needsUpdate = true;
-  /* ---------- WHICH WAY UP — A FACT ABOUT THE LOADER, NOT ABOUT THE FORMAT ----------
-     three samples an equirect with `v = asin(dir.y)/pi + 0.5`, so v = 0 is straight DOWN, and a
-     DataTexture is not flipped on upload — buffer row 0 therefore renders as the NADIR. What
-     has to be known is which end of the buffer each loader puts the sky at, and that was
-     measured rather than assumed:
+  /* ---------- WHICH WAY UP — NEITHER LOADER NEEDS TURNING OVER ----------
+     MEASURED on three 0.170, by rendering each map straight up and straight down and matching
+     the pixel that came back against the buffer row it came from:
 
-       RGBELoader  writes scanlines in file order, so row 0 is the image's top row — the sky.
-                   Needs turning over.
-       EXRLoader   inverts the buffer unconditionally as it writes it (`outLineOffset` uses
-                   `height - 1 - true_y`), so row 0 is the image's bottom row — the ground.
-                   Already right.
+       RGBELoader   flipY = true    buffer row 0 renders at the ZENITH
+       EXRLoader    flipY = false   buffer row 0 renders at the NADIR
 
-     BOTH FORMATS STORE ROWS TOP-DOWN ON DISK. The earlier note here claimed the two containers
-     "arrive the other way round" from each other, and they do not: every `.hdr` and `.exr` in
-     the folder records top-to-bottom, and an EXR's `lineOrder` only decides which source
-     scanline is consumed first, never the orientation of the decoded buffer. The rule was right
-     and the reason was wrong, which is the sort of reason somebody later corrects and breaks.
-     `flipY` is a red herring for the same reason it always was: the loaders disagree about it
-     (RGBE true, EXR false) and WebGL ignores UNPACK_FLIP_Y for typed-array uploads, so nothing
-     downstream — the background, PMREM's `equirectUv` — reads it at all. */
-  if (!isExr) flipSkyRows(tex);
+     So both arrive RIGHT WAY UP and nothing here has to touch them. `dusk.hdr` row 0 holds
+     [0.083 0.141 0.255] and its zenith reads [81 105 138] — the sRGB encode of that same row
+     to within a digit; `day.exr` matches its LAST row at the zenith just as exactly.
+
+     THE NOTE THAT STOOD HERE WAS WRONG IN THE ONE WAY THAT MATTERED. It called `flipY` a red
+     herring because "WebGL ignores UNPACK_FLIP_Y for typed-array uploads". It does not — the
+     flag is honoured for an ArrayBufferView, and it is the entire reason two loaders that
+     disagree in memory agree on screen. Believing otherwise, this function turned every `.hdr`
+     over and buried the sky: ground at the zenith, horizon glow below the floor, on every
+     Radiance map in the folder. The `.exr` maps were left alone and so looked right, which is
+     precisely why it survived so long — the folder holds both containers, only one was broken,
+     and which one you noticed depended on which you happened to pick.
+
+     If a loader ever does change, `flipY` is the thing to re-measure. TURN OVER below is the
+     escape hatch in the meantime, and it is a person's decision, not a guess. */
   /* AND A HAND OVERRIDE, which is what makes trusting the loader safe. */
   if (flipPref(e.hdr && e.hdr.file)) flipSkyRows(tex);
   hdrProg.delete(name);
@@ -3955,6 +3962,12 @@ function skyMeasure(tex) {
   const im = tex && tex.image;
   if (!im || !im.data) return { lum: 0, sky: [1, 1, 1], ground: [1, 1, 1], dir: null };
   const W = im.width, H = im.height, d = im.data;
+  /* WHICH ROW IS THE SKY IS A FACT ABOUT flipY, NOT ABOUT THE BUFFER. An RGBE map uploads with
+     flipY = true and renders row 0 at the ZENITH; an EXR uploads flipY = false and renders row
+     0 at the NADIR. Reading both the same way is how the orientation bug above stayed hidden:
+     the reading agreed with the upside-down picture instead of contradicting it, so `oddWayUp`
+     never fired and the sun came out of the wrong hemisphere on every `.hdr` in the folder. */
+  const row0Up = tex.flipY === true;
   /* HalfFloat arrives as raw 16-bit bits; Float32 is already the number */
   const half = (d instanceof Uint16Array);
   const h2f = (h) => { const s = (h & 0x8000) ? -1 : 1, e = (h >> 10) & 0x1f, f = h & 0x3ff;
@@ -3969,7 +3982,7 @@ function skyMeasure(tex) {
   const cen = [0, 0, 0];                        // luminance-weighted direction, unnormalised
   for (let y = 0; y < H; y++) {
     const v = (y + 0.5) / H;
-    const dy = Math.sin((v - 0.5) * Math.PI);
+    const dy = Math.sin((row0Up ? 0.5 - v : v - 0.5) * Math.PI);
     const hxz = Math.sqrt(Math.max(0, 1 - dy * dy));
     const w = Math.cos((v - 0.5) * Math.PI);    // solid angle of this row
     for (let x = 0; x < W; x += step) {
