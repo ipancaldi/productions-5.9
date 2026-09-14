@@ -1,14 +1,22 @@
 # ── macOS ──────────────────────────────────────────────────────────────
 .DS_Store
 
-# ── Media assets: ~630 MB of video, skies and models. Kept local.
-# GitHub warns over 50 MB a file and refuses over 100 MB (HDR/twilight.hdr
-# alone is 87 MB). The panels read these from disk at runtime; nothing in
-# the code needs them to be in the repo.
-Content/
-HDR/*.hdr
+# ── Media assets ───────────────────────────────────────────────────────
+# The outliers stay local. GitHub warns over 50 MB a file and refuses over
+# 100 MB, and these four are 174 MB of the 190 MB:
+HDR/twilight.hdr
 HDR/*.exr
-glb/**/*.glb
+glb/Stadium/soccer_stadium.glb
+#
+# The small models and the two small skies ARE tracked, so the Pages demo
+# has a stage to stand on and a sky to light it. The Scene Study finds the
+# skies through HDR/index.json when there is no directory listing, which is
+# the case on Pages — so a map added here must be added there too.
+#
+# Content/ is 312 MB of video and is NOT tracked, and not because of size:
+# the Content Bin has no fetch in it. Media arrives through its file picker
+# or dropped from the desktop, so shipping the folder would change nothing.
+Content/
 
 # ── Python: virtualenv, bytecode, the SmolVLM symlink, logs ────────────
 agent/.venv/

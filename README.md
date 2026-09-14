@@ -51,13 +51,35 @@ These are the documents to fix first when the halves disagree:
 - [`VISION.md`](VISION.md) — how a sketch becomes geometry
 - [`PLAN.md`](PLAN.md) · [`DEVELOPMENT-LOG.md`](DEVELOPMENT-LOG.md) — the plan, and what actually happened
 
+## Try it
+
+<https://ipancaldi.github.io/productions-5.9/HUB_5.9.html>
+
+The hosted copy runs the real thing, with two differences that are properties of
+being on a remote host rather than bugs:
+
+- **The agent is offline.** Its CORS allow-list is `localhost:3900` /
+  `127.0.0.1:3900` / `null`, so the Sketch Pad and Reference Board come up with
+  their agent tools greyed out. Run it locally for those.
+- **The Content Bin starts empty.** It has no `fetch` in it by design — media
+  arrives through its file picker or dropped in from the desktop. Drop a video
+  or a still on it and everything downstream works.
+
+The stage models and two skies are included, so the Scene Study has something to
+stand on and something to light it with.
+
 ## Not in this repo
 
-Roughly 630 MB of media is deliberately left out — `Content/` video, the `.hdr`
-and `.exr` skies, the `.glb` models, the Python virtualenv and the vision model.
-GitHub refuses a file over 100 MB and one sky map alone is 87 MB. Recreate them
-locally: put video in `Content/`, skies in `HDR/` (listed by `HDR/index.json`),
-models in `glb/`, and run
+Four files, 174 MB of the 190 MB of media: `HDR/twilight.hdr` (87 MB), the two
+`.exr` skies, and `glb/Stadium/soccer_stadium.glb` (43 MB) — GitHub refuses a
+file over 100 MB and warns over 50. Also out: `Content/` (312 MB of video, and
+excluded on its own merits — see `.gitignore`), the Python virtualenv, and the
+vision model.
+
+To restore the full set locally, put the missing skies back in `HDR/` **and add
+them to `HDR/index.json`** (the Scene Study merges that manifest with the
+directory listing; on Pages there is no listing, so the manifest is all there
+is), drop the stadium back in `glb/Stadium/`, put video in `Content/`, and run
 
 ```bash
 python3 -m venv agent/.venv && agent/.venv/bin/python -m pip install -r agent/requirements.txt
