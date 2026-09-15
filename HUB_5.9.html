@@ -218,6 +218,20 @@
   --status-failed:   var(--magenta-light);
   --status-info:     var(--violet-400);
   --status-live:     var(--purple-light);
+  /* status/guide — THE TOUR'S ONE COLOUR, and the reason it is borrowed rather than
+     invented. GUIDE ME THROUGH rings whatever it is talking about, and that ring has
+     to read as NOT part of the interface it is drawn over. Green is the only accent
+     this build spends on a FINISHED state, so nothing that moves during a tour is
+     already wearing it, and at 11.87 on surface/panel it is the brightest mark the
+     palette can make. Canonical BrandOS **Green** — no new hex, no new hue. */
+  --status-guide:    var(--green);
+  /* status/guide-deep — THE SECOND TOUR'S COLOUR. GUIDE ME THROUGH walks the whole
+     workspace; from any task step it can hand off to a deeper walk of that one task's
+     panels, and the two must never be mistaken for each other mid-step. Magenta Light
+     is the furthest hue from Green the palette offers (306 degrees against 163), it is
+     already a primitive, and at 7.74 on surface/panel it carries a label as happily as
+     it carries a ring. BrandOS **Magenta Light**, the UI Tint of Magenta. */
+  --status-guide-deep: var(--magenta-light);
 
   /* axis/* — THE ROOM IS NAMED Z-UP.
      Red X across, blue Y into the room, GREEN Z UP. That is what a lighting plan,
@@ -259,6 +273,14 @@
   --ring-emphasis:  rgba(208, 213, 221, 0.65);
   --scrim:          rgba(16, 24, 40, 0.82);
   --veil:           rgba(16, 24, 40, 0.88);
+  /* the tour dims HARDER than a modal — one step past --veil — because a modal only
+     has to win against the page and this has to make everything except one ringed
+     rectangle stop competing for the eye */
+  --scrim-guide:    rgba(16, 24, 40, 0.90);
+  --tint-guide:     rgba(107, 255, 220, 0.40);  /* green #6BFFDC — the tour ring's glow */
+  --tint-guide-s:   rgba(107, 255, 220, 0.20);
+  --tint-guide-deep:  rgba(255, 152, 244, 0.40);  /* magenta-light #FF98F4 — the per-task ring */
+  --tint-guide-deep-s:rgba(255, 152, 244, 0.20);
 
   /* elevation — Figma effect styles */
   --elev-1: 0 4px 10px rgba(16, 24, 40, 0.45);
@@ -807,6 +829,165 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
 .gtoggle .sw { width: 26px; height: 14px; border-radius: var(--radius-pill); border: 1px solid currentColor; position: relative; flex-shrink: 0; }
 .gtoggle .sw i { position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; border-radius: var(--radius-pill); background: currentColor; transition: transform 140ms ease; }
 .gtoggle.on .sw i { transform: translateX(11px); }
+
+/* ---------- GUIDE ME THROUGH · THE TOUR ------------------------------------
+   v5.9.2 · THE GUIDE STOPPED BEING A PANEL.
+
+   It used to be a column: switch the toggle on and an 18%-wide strip of prose
+   appeared on the right, explaining the workspace from outside the workspace.
+   That is the one place a person will not read it. It cost width it could not
+   justify, it described panels that were on the other side of the screen, and
+   it could only ever talk about what had just happened rather than about what
+   you were looking at.
+
+   This is the same guidance delivered ON the thing it describes: the subject
+   ringed, everything else dimmed to near-black, one card at a time, GOT IT and
+   SKIP. It is a layer over the app, not a tenant of it, so it costs no width
+   and survives any arrangement of panels the person has made.
+
+   TWO ELEMENTS DRAW THE SPOTLIGHT, NOT ONE. A single box cannot both cast the
+   veil and carry the ring, because a 9999px shadow paints over anything the
+   same element tries to draw outside itself. So `.tour-veil` is the rect whose
+   shadow darkens everything around it — inside stays at full brightness and
+   completely untinted, which is the point: the subject is shown as it really
+   looks — and `.tour-ring` is a second box at the same rect carrying the
+   outline. An OUTLINE rather than a border, so the 2px lands outside the rect
+   and never covers a pixel of the thing being pointed at.
+
+   NOTHING UNDER THE LAYER IS CLICKABLE. `.tour-block` swallows every pointer
+   event, so a panel cannot be resized, retargeted or closed out from under an
+   anchor mid-step. The tour points; it never acts on your behalf. ---------- */
+.tour { position: fixed; inset: 0; z-index: 120; }
+/* THE SECOND TOUR IS THE SAME MACHINE IN ANOTHER COLOUR. Everything the layer draws
+   reads its accent from two custom properties, so the per-task walk is one class on
+   the root that shadows them for every descendant. No second set of rules, no second
+   set of components, and no way for the two to drift apart visually. */
+.tour.deep { --status-guide: var(--status-guide-deep);
+             --tint-guide: var(--tint-guide-deep); --tint-guide-s: var(--tint-guide-deep-s); }
+.tour.deep .tour-card { width: 380px; }
+.tour.deep .cta.good { background: var(--status-guide-deep); }
+.tour.deep .cta.good:hover { background: var(--status-guide-deep); filter: brightness(1.12); }
+.tour-block { position: absolute; inset: 0; cursor: default; }
+.tour-full { position: absolute; inset: 0; background: var(--scrim-guide); pointer-events: none; }
+.tour-veil, .tour-ring {
+  position: absolute; top: 0; left: 0; border-radius: var(--radius-lg); pointer-events: none;
+  transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              height 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.tour-veil { box-shadow: 0 0 0 9999px var(--scrim-guide); }
+.tour-ring { outline: 2px solid var(--status-guide); animation: tourPulse 2200ms ease-in-out infinite; }
+/* the pulse is the only motion on screen while a step is up, which is what makes
+   it findable without being loud — it breathes the glow, never the outline */
+@keyframes tourPulse {
+  0%, 100% { box-shadow: 0 0 12px 1px var(--tint-guide-s); }
+  50%      { box-shadow: 0 0 26px 5px var(--tint-guide); }
+}
+
+.tour-card {
+  position: absolute; top: 0; left: 0; width: 330px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px); display: flex; flex-direction: column;
+  background: var(--surface-panel); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--elev-4);
+  pointer-events: auto; transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* THE PADDING AND THE SCROLL ARE ON THE INNER BOX, NOT THE CARD. A six-panel step
+   in a short window is the one case where the card can outgrow the screen, and the
+   card cannot scroll itself: the caret hangs 6px outside it, so an overflow on the
+   card would clip the thing that points at the subject. So the caret stays a child
+   of the frame and everything else scrolls inside it. */
+.tour-card-in {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: var(--space-16) var(--space-16) var(--space-12);
+  display: flex; flex-direction: column; gap: var(--space-8);
+}
+.tour-card-ft { flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-8);
+                padding: var(--space-12) var(--space-16) var(--space-16);
+                border-top: 1px solid var(--border-subtle); }
+.tour-card-in::-webkit-scrollbar { width: 6px; }
+.tour-card-in::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
+/* A 10px square turned 45 degrees: after the rotation the ORIGINAL top and left
+   borders are the two upper-left edges, right and bottom the two lower-right
+   ones. So the pair kept is always the pair that meets at the corner doing the
+   pointing — which is why these four rules do not look symmetrical. */
+.tour-caret { position: absolute; width: 10px; height: 10px; background: var(--surface-panel);
+              border: 1px solid var(--border-strong); transform: rotate(45deg); }
+.tour-caret.right  { left: -6px;   border-right: 0; border-bottom: 0; }  /* card right of target, caret points left */
+.tour-caret.left   { right: -6px;  border-left: 0;  border-top: 0; }     /* card left of target, caret points right */
+.tour-caret.bottom { top: -6px;    border-bottom: 0; border-left: 0; }   /* card below target, caret points up */
+.tour-caret.top    { bottom: -6px; border-top: 0;  border-right: 0; }    /* card above target, caret points down */
+
+.tour-hd { display: flex; align-items: baseline; gap: var(--space-8); }
+.tour-chapter { flex: 1; min-width: 0; font: var(--t-label-m); letter-spacing: var(--tr-label-m);
+                text-transform: uppercase; color: var(--status-guide); }
+.tour-count { font: var(--t-body-s); letter-spacing: var(--tr-body-s); color: var(--text-meta); flex-shrink: 0; }
+.tour-bar { height: 2px; border-radius: var(--radius-xxs); background: var(--surface-raised); overflow: hidden; }
+.tour-bar i { display: block; height: 100%; background: var(--status-guide); transition: width 220ms ease; }
+.tour-title { font: var(--t-title-s); letter-spacing: var(--tr-title-s); color: var(--text-primary); }
+.tour-body { margin: 0; font: var(--t-body-l); letter-spacing: var(--tr-body-l); color: var(--text-secondary); }
+.tour-body strong { font-weight: 600; color: var(--text-primary); }
+.tour-opens { display: flex; flex-direction: column; gap: var(--space-8);
+               border-top: 1px solid var(--border-subtle); padding-top: var(--space-10); }
+.tour-opens ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-6); }
+.tour-opens li { display: flex; gap: var(--space-8); align-items: flex-start;
+                 font: var(--t-body-s); letter-spacing: var(--tr-body-s); color: var(--text-meta); }
+/* the bullet is the tour's own colour rather than a disc, so a six-panel list reads
+   as part of this layer and not as body copy that wandered in from a panel */
+.tour-opens li i { flex-shrink: 0; width: 4px; height: 4px; margin-top: 6px;
+                   border-radius: var(--radius-pill); background: var(--status-guide); }
+.tour-opens li b { font-weight: 600; color: var(--text-primary); }
+
+/* WHAT YOU CAN DO, AS A LIST. Same bullet as the panel list above it so the layer has
+   one way of making a point, but no heading and no rule: this IS the explanation, not
+   an appendix to one. */
+.tour-points { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-8); }
+.tour-points li { display: flex; gap: var(--space-8); align-items: flex-start;
+                  font: var(--t-body-m); letter-spacing: var(--tr-body-m); color: var(--text-secondary); }
+.tour-points li i { flex-shrink: 0; width: 4px; height: 4px; margin-top: 7px;
+                    border-radius: var(--radius-pill); background: var(--status-guide); }
+.tour-points li b { font-weight: 600; color: var(--text-primary); }
+.tour-foot { margin: 0; padding-top: var(--space-8); border-top: 1px solid var(--border-subtle);
+             font: var(--t-body-s); letter-spacing: var(--tr-body-s); color: var(--text-meta); }
+
+/* THE FIGURES. Drawn in currentColor and `--status-guide`, so one drawing serves both
+   tours and neither needs a second copy of it. The cell count is on the container
+   rather than guessed from the width, because these are diagrams with a composition,
+   not a gallery that may reflow into any shape it likes. */
+.tour-fig { display: grid; gap: var(--space-6); color: var(--text-meta); }
+.tour-fig.c1 { grid-template-columns: 1fr; }
+.tour-fig.c2 { grid-template-columns: 1fr 1fr; }
+.tour-fig.c4 { grid-template-columns: 1fr 1fr; }
+.tour-fig figure { margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.tour-fig svg { display: block; width: 100%; height: auto;
+                background: var(--surface-sunken); border: 1px solid var(--border-subtle);
+                border-radius: var(--radius-sm); }
+.tour-fig figcaption { font: var(--t-body-xs); letter-spacing: var(--tr-body-xs); color: var(--text-meta); }
+.tour-ft { display: flex; align-items: center; gap: var(--space-6); }
+.tour-ft2 { display: flex; align-items: center; gap: var(--space-10); }
+.tour-back { padding: var(--space-8) var(--space-12); border-radius: var(--radius-card);
+             border: 1px solid var(--border-strong); background: transparent; color: var(--text-secondary);
+             font: var(--t-label-m); letter-spacing: var(--tr-label-m); text-transform: uppercase; cursor: pointer; }
+.tour-back:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-meta); }
+.tour-back:disabled { opacity: 0.35; cursor: default; }
+.cta.tour-go { padding: var(--space-8) var(--space-16); }
+.tour-link { padding: 0; border: 0; background: transparent; color: var(--text-meta); cursor: pointer;
+             font: var(--t-body-s); letter-spacing: var(--tr-body-s); text-decoration: underline;
+             text-underline-offset: 2px; }
+.tour-link:hover { color: var(--text-primary); }
+/* the hand-off into the per-task walk. It wears the colour of the thing it leads to,
+   which is the only warning anybody needs that pressing it rearranges the panels. */
+.tour-deep-cta { display: flex; align-items: center; justify-content: center; gap: var(--space-8);
+                 padding: var(--space-10) var(--space-12); border-radius: var(--radius-card);
+                 border: 1px solid var(--status-guide-deep); background: transparent;
+                 color: var(--status-guide-deep); font: var(--t-label-m); letter-spacing: var(--tr-label-m);
+                 text-transform: uppercase; cursor: pointer; }
+.tour-deep-cta:hover { background: var(--tint-guide-deep-s); }
+.tour-deep-cta i { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--status-guide-deep); }
+.tour-keys { margin-left: auto; font: var(--t-body-xs); letter-spacing: var(--tr-body-xs);
+             color: var(--text-disabled); text-transform: uppercase; }
+
+/* the toggle, while the tour it started is running */
+.gtoggle.touring { color: var(--gray-900); background: var(--status-guide); border-color: var(--status-guide); }
 
 /* ---------- shared panel content ---------- */
 /* v5.9 · 8px, not 16. Every panel in this workspace is a tile in a grid somebody
@@ -1548,7 +1729,7 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
 
 
   <!-- top bar -->
-  <div class="topbar">
+  <div class="topbar" data-tour="topbar">
     <img class="tb-logo" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjY3IiBoZWlnaHQ9IjQzIiB2aWV3Qm94PSIwIDAgMjY3IDQzIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNNS4yNzUzOSAzLjUxNTYyVjM4LjY4MzZMMCA0Mi4xOTkyVjBMNS4yNzUzOSAzLjUxNTYyWk0xNS44MjUyIDEwLjU0OThWMzEuNjQ5NEwxMC41NDk4IDM1LjE2NVY3LjAzNDE4TDE1LjgyNTIgMTAuNTQ5OFpNOTcuOTgzNCA5Ljc4NjEzQzEwMC4xMTEgOS43ODYxOCAxMDIuMDA3IDEwLjI3MTEgMTAzLjY3MiAxMS4yNDAyQzEwNS4zMzYgMTIuMjA5NSAxMDYuNjMyIDEzLjU1ODQgMTA3LjU2IDE1LjI4NjFDMTA4LjQ4NyAxNi45OTI3IDEwOC45NSAxOC45MTAyIDEwOC45NSAyMS4wMzgxQzEwOC45NSAyMy4xNjYgMTA4LjQ4NyAyNS4wOTM3IDEwNy41NiAyNi44MjEzQzEwNi42MzMgMjguNTI3OSAxMDUuMzM2IDI5Ljg2NTcgMTAzLjY3MiAzMC44MzVDMTAyLjAwNyAzMS44MDQxIDEwMC4xMTEgMzIuMjg5IDk3Ljk4MzQgMzIuMjg5MUM5NS44NTUzIDMyLjI4OTEgOTMuOTU4NSAzMS44MDQyIDkyLjI5MzkgMzAuODM1QzkwLjYyOTYgMjkuODY1OCA4OS4zMzQyIDI4LjUyNzggODguNDA3MiAyNi44MjEzQzg3LjQ4MDIgMjUuMDkzNiA4Ny4wMTY2IDIzLjE2NjEgODcuMDE2NiAyMS4wMzgxQzg3LjAxNjYgMTguOTEwMSA4Ny40ODAyIDE2Ljk5MjggODguNDA3MiAxNS4yODYxQzg5LjMzNDMgMTMuNTU4NCA5MC42Mjk1IDEyLjIwOTQgOTIuMjkzOSAxMS4yNDAyQzkzLjk1ODUgMTAuMjcxIDk1Ljg1NTMgOS43ODYxMyA5Ny45ODM0IDkuNzg2MTNaTTEzOC4xNjMgMjIuODA3NkMxMzguMTYzIDI0LjU5ODYgMTM4LjUxMSAyNS45NDc1IDEzOS4yMDYgMjYuODUzNUMxMzkuOTAxIDI3Ljc1OTQgMTQwLjk5NyAyOC4yMTE5IDE0Mi40OTMgMjguMjExOUMxNDMuOTg5IDI4LjIxMTkgMTQ1LjA4NSAyNy43NTk1IDE0NS43OCAyNi44NTM1QzE0Ni40OTcgMjUuOTQ3NSAxNDYuODU0IDI0LjU5ODYgMTQ2Ljg1NCAyMi44MDc2VjkuOTc1NTlIMTUxLjU5NVYyMi41NTQ3QzE1MS41OTUgMjUuNzE0OSAxNTAuODE2IDI4LjEyNzUgMTQ5LjI1NyAyOS43OTJDMTQ3LjcxOSAzMS40NTY1IDE0NS40NjQgMzIuMjg5IDE0Mi40OTMgMzIuMjg5MUMxMzkuNTIyIDMyLjI4OTEgMTM3LjI2OCAzMS40NTY1IDEzNS43MjkgMjkuNzkyQzEzNC4xOTIgMjguMTI3NSAxMzMuNDIyIDI1LjcxNTEgMTMzLjQyMiAyMi41NTQ3VjkuOTc1NTlIMTM4LjE2M1YyMi44MDc2Wk0xNjUuMTcyIDkuNzg2MTNDMTY2Ljg5OSA5Ljc4NjE1IDE2OC40NDggMTAuMTIzNyAxNjkuODE3IDEwLjc5NzlDMTcxLjE4NyAxMS40NzIxIDE3Mi4yOTQgMTIuNDIwNSAxNzMuMTM3IDEzLjY0MjZDMTczLjk3OSAxNC44NjQ0IDE3NC40ODUgMTYuMjc2IDE3NC42NTMgMTcuODc3SDE2OS45MTJDMTY5LjYzOCAxNi42MTMgMTY5LjA1OSAxNS42MjI1IDE2OC4xNzQgMTQuOTA2MkMxNjcuMzEgMTQuMTY5IDE2Ni4yMjUgMTMuNzk5OCAxNjQuOTE5IDEzLjc5OThDMTYzLjE0OSAxMy43OTk4IDE2MS43NDggMTQuNDYzOSAxNjAuNzE2IDE1Ljc5MUMxNTkuNjgzIDE3LjExODQgMTU5LjE2NyAxOC44Njc5IDE1OS4xNjcgMjEuMDM4MUMxNTkuMTY3IDIzLjE4NzEgMTU5LjY4MyAyNC45MzU3IDE2MC43MTYgMjYuMjg0MkMxNjEuNzQ4IDI3LjYxMTUgMTYzLjE0OSAyOC4yNzU0IDE2NC45MTkgMjguMjc1NEMxNjYuMjI1IDI4LjI3NTQgMTY3LjMxIDI3LjkxNzMgMTY4LjE3NCAyNy4yMDEyQzE2OS4wNTkgMjYuNDYzNyAxNjkuNjM4IDI1LjQ2MjQgMTY5LjkxMiAyNC4xOTgySDE3NC42NTNDMTc0LjQ4NSAyNS43OTk1IDE3My45NzkgMjcuMjExNiAxNzMuMTM3IDI4LjQzMzZDMTcyLjI5NCAyOS42NTU3IDE3MS4xODcgMzAuNjA0MSAxNjkuODE3IDMxLjI3ODNDMTY4LjQ0OCAzMS45NTI0IDE2Ni44OTkgMzIuMjg5IDE2NS4xNzIgMzIuMjg5MUMxNjIuOTYgMzIuMjg5MSAxNjEuMDMxIDMxLjgyNTUgMTU5LjM4OCAzMC44OTg0QzE1Ny43NjUgMjkuOTcxNCAxNTYuNTEyIDI4LjY2NSAxNTUuNjI3IDI2Ljk3OTVDMTU0Ljc2MyAyNS4yNzI5IDE1NC4zMzEgMjMuMjkyNCAxNTQuMzMxIDIxLjAzODFDMTU0LjMzMSAxOC43ODM3IDE1NC43NjMgMTYuODEzNSAxNTUuNjI3IDE1LjEyNzlDMTU2LjUxMiAxMy40MjEzIDE1Ny43NjUgMTIuMTAzOCAxNTkuMzg4IDExLjE3NjhDMTYxLjAzMSAxMC4yNDk3IDE2Mi45NiA5Ljc4NjEzIDE2NS4xNzIgOS43ODYxM1pNMjEzLjg0OCA5Ljc4NjEzQzIxNS45NzYgOS43ODYxMyAyMTcuODczIDEwLjI3MSAyMTkuNTM3IDExLjI0MDJDMjIxLjIwMSAxMi4yMDk0IDIyMi40OTcgMTMuNTU4NSAyMjMuNDI0IDE1LjI4NjFDMjI0LjM1MSAxNi45OTI4IDIyNC44MTQgMTguOTEwMSAyMjQuODE0IDIxLjAzODFDMjI0LjgxNCAyMy4xNjYgMjI0LjM1MSAyNS4wOTM2IDIyMy40MjQgMjYuODIxM0MyMjIuNDk3IDI4LjUyNzggMjIxLjIwMSAyOS44NjU4IDIxOS41MzcgMzAuODM1QzIxNy44NzMgMzEuODA0MiAyMTUuOTc2IDMyLjI4OTEgMjEzLjg0OCAzMi4yODkxQzIxMS43MiAzMi4yODkgMjA5LjgyNCAzMS44MDQxIDIwOC4xNTkgMzAuODM1QzIwNi40OTUgMjkuODY1NyAyMDUuMTk5IDI4LjUyOCAyMDQuMjcxIDI2LjgyMTNDMjAzLjM0NSAyNS4wOTM3IDIwMi44ODEgMjMuMTY2IDIwMi44ODEgMjEuMDM4MUMyMDIuODgxIDE4LjkxMDEgMjAzLjM0NSAxNi45OTI3IDIwNC4yNzEgMTUuMjg2MUMyMDUuMTk5IDEzLjU1ODQgMjA2LjQ5NSAxMi4yMDk1IDIwOC4xNTkgMTEuMjQwMkMyMDkuODI0IDEwLjI3MTEgMjExLjcyIDkuNzg2MTUgMjEzLjg0OCA5Ljc4NjEzWk0yNTcuNjg1IDkuNzg2MTNDMjU5LjMwNyA5Ljc4NjEzIDI2MC43NjIgMTAuMDkyMSAyNjIuMDQ3IDEwLjcwMzFDMjYzLjM1MyAxMS4yOTMxIDI2NC4zNzUgMTIuMTE0NiAyNjUuMTEyIDEzLjE2OEMyNjUuODcxIDE0LjIyMTQgMjY2LjI2IDE1LjQxMiAyNjYuMjgxIDE2LjczOTNIMjYxLjYzNkMyNjEuNTMgMTUuNzkxMiAyNjEuMTMgMTUuMDMyNyAyNjAuNDM1IDE0LjQ2MzlDMjU5LjczOSAxMy44NzQgMjU4LjgyMiAxMy41NzkxIDI1Ny42ODUgMTMuNTc5MUMyNTYuNjMxIDEzLjU3OTIgMjU1Ljc4OCAxMy44MDA3IDI1NS4xNTYgMTQuMjQzMkMyNTQuNTI1IDE0LjY4NTYgMjU0LjIwOCAxNS4zMTczIDI1NC4yMDggMTYuMTM4N0MyNTQuMjA4IDE2LjcyODUgMjU0LjM5OCAxNy4xOTIyIDI1NC43NzcgMTcuNTI5M0MyNTUuMTU3IDE3Ljg0NTMgMjU1LjY5NCAxOC4xMDg2IDI1Ni4zOSAxOC4zMTkzQzI1Ny4wODUgMTguNTA4OSAyNTguMTYgMTguNzQwOCAyNTkuNjEzIDE5LjAxNDZDMjYxLjA4OCAxOS4yODg1IDI2Mi4zMzEgMTkuNjM2NCAyNjMuMzQyIDIwLjA1NzZDMjY0LjM1MyAyMC40NTc5IDI2NS4xNjQgMjEuMDgwMSAyNjUuNzc1IDIxLjkyMjlDMjY2LjQwNyAyMi43NDQ2IDI2Ni43MjQgMjMuODUwNiAyNjYuNzI0IDI1LjI0MTJDMjY2LjcyNCAyNi41ODk3IDI2Ni4zNTYgMjcuODAxNCAyNjUuNjE4IDI4Ljg3NkMyNjQuODgxIDI5LjkyOTUgMjYzLjg0OCAzMC43NjIgMjYyLjUyMSAzMS4zNzNDMjYxLjIxNCAzMS45ODQgMjU5LjczOSAzMi4yODkxIDI1OC4wOTYgMzIuMjg5MUMyNTYuMzI2IDMyLjI4OSAyNTQuNzQ2IDMxLjk3MjggMjUzLjM1NSAzMS4zNDA4QzI1MS45ODYgMzAuNjg3NiAyNTAuOTExIDI5Ljc5MjEgMjUwLjEzMiAyOC42NTQzQzI0OS4zNTIgMjcuNTE2NSAyNDguOTUyIDI2LjI0MTggMjQ4LjkzMSAyNC44MzAxTDI1My41NzYgMjQuODkzNkMyNTMuNjYgMjUuOTg5MiAyNTQuMTAzIDI2Ljg3NDYgMjU0LjkwMyAyNy41NDg4QzI1NS43MjUgMjguMjAyIDI1Ni44MTEgMjguNTI4MyAyNTguMTU5IDI4LjUyODNDMjU5LjI3NiAyOC41MjgzIDI2MC4xODIgMjguMjk2NSAyNjAuODc3IDI3LjgzM0MyNjEuNTkzIDI3LjM0ODQgMjYxLjk1MSAyNi42ODQ2IDI2MS45NTEgMjUuODQxOEMyNjEuOTUxIDI1LjI1MiAyNjEuNzUyIDI0Ljc4ODMgMjYxLjM1MiAyNC40NTEyQzI2MC45NzIgMjQuMDkzIDI2MC40MjQgMjMuODE5NSAyNTkuNzA4IDIzLjYyOTlDMjU5LjAxMyAyMy40MTkyIDI1Ny45MjcgMjMuMTY2MSAyNTYuNDUyIDIyLjg3MTFDMjU0Ljk5OCAyMi41OTcyIDI1My43NzYgMjIuMjQ5NSAyNTIuNzg2IDIxLjgyODFDMjUxLjc5NiAyMS4zODU3IDI1MC45ODUgMjAuNzQzMSAyNTAuMzUzIDE5LjkwMDRDMjQ5Ljc0MiAxOS4wMzY1IDI0OS40MzcgMTcuODk4IDI0OS40MzcgMTYuNDg2M0MyNDkuNDM3IDE1LjIwMTIgMjQ5Ljc4NCAxNC4wNTMzIDI1MC40NzkgMTMuMDQyQzI1MS4xOTYgMTIuMDMwNyAyNTIuMTc1IDExLjIzOTggMjUzLjQxOCAxMC42NzA5QzI1NC42ODIgMTAuMDgxIDI1Ni4xMDQgOS43ODYxOCAyNTcuNjg1IDkuNzg2MTNaTTU3LjI3ODMgOS45NzU1OUM1OC44NTg0IDkuOTc1NTkgNjAuMjQ5MyAxMC4yODE3IDYxLjQ1MDIgMTAuODkyNkM2Mi42NzIyIDExLjQ4MjUgNjMuNjEwNSAxMi4zMzU2IDY0LjI2MzcgMTMuNDUyMUM2NC45Mzc5IDE0LjU2ODggNjUuMjc0NCAxNS44NjUgNjUuMjc0NCAxNy4zMzk4QzY1LjI3NDQgMTguODE0NyA2NC45Mzc5IDIwLjExMDggNjQuMjYzNyAyMS4yMjc1QzYzLjYxMDUgMjIuMzIzMiA2Mi42NzIzIDIzLjE3NjEgNjEuNDUwMiAyMy43ODcxQzYwLjI0OTIgMjQuMzc3IDU4Ljg1ODUgMjQuNjcyOSA1Ny4yNzgzIDI0LjY3MjlINTMuMDExN1YzMi4wOTk2SDQ4LjI3MTVWOS45NzU1OUg1Ny4yNzgzWk03Ni45Mzk1IDkuOTc1NTlDNzguNTQwNyA5Ljk3NTYgNzkuOTUyOCAxMC4yODE2IDgxLjE3NDggMTAuODkyNkM4Mi40MTc3IDExLjQ4MjUgODMuMzc2NiAxMi4zMzU2IDg0LjA1MDggMTMuNDUyMUM4NC43MjUgMTQuNTY4OCA4NS4wNjE1IDE1Ljg2NSA4NS4wNjE1IDE3LjMzOThDODUuMDYxNSAxOC43NTEzIDg0LjcyNDggMjAuMDA1MSA4NC4wNTA4IDIxLjEwMDZDODMuMzc2NiAyMi4xNzUxIDgyLjQ0OTQgMjIuOTk3NSA4MS4yNjk1IDIzLjU2NjRMODUuNjMwOSAzMi4wOTk2SDgwLjM4MzhMNzYuNjg2NSAyNC42NzI5SDcyLjY3MjlWMzIuMDk5Nkg2Ny45MzE2VjkuOTc1NTlINzYuOTM5NVpNMTE5LjUwMSA5Ljk3NTU5QzEyMS43MTMgOS45NzU1OSAxMjMuNjYyIDEwLjQ1MDMgMTI1LjM0OCAxMS4zOTg0QzEyNy4wNTQgMTIuMzI1NSAxMjguMzYxIDEzLjYzMTggMTI5LjI2NyAxNS4zMTc0QzEzMC4xOTQgMTYuOTgxOSAxMzAuNjU3IDE4Ljg4ODkgMTMwLjY1NyAyMS4wMzgxQzEzMC42NTcgMjMuMTg3MSAxMzAuMTk0IDI1LjEwNDUgMTI5LjI2NyAyNi43OUMxMjguMzYxIDI4LjQ1NDUgMTI3LjA1NCAyOS43NjA5IDEyNS4zNDggMzAuNzA5QzEyMy42NjIgMzEuNjM2IDEyMS43MTMgMzIuMDk5NiAxMTkuNTAxIDMyLjA5OTZIMTExLjgyMVY5Ljk3NTU5SDExOS41MDFaTTE5Mi42OTcgMTQuMDUyN0gxODYuMzEzVjMyLjA5OTZIMTgxLjU3MlYxNC4wNTI3SDE3NS4xODhWOS45NzU1OUgxOTIuNjk3VjE0LjA1MjdaTTIwMC4wMTkgMzIuMDk5NkgxOTUuMjc4VjkuOTc1NTlIMjAwLjAxOVYzMi4wOTk2Wk0yNDEuMzcgMjMuOTE0MVY5Ljk3NTU5SDI0Ni4wNDhWMzIuMDk5NkgyNDEuNzE4TDIzMi4zMzEgMTguMTYyMVYzMi4wOTk2SDIyNy42ODZWOS45NzU1OUgyMzEuOTgzTDI0MS4zNyAyMy45MTQxWk05Ny45ODM0IDEzLjc5OThDOTYuNzYxNSAxMy43OTk4IDk1LjY4NjcgMTQuMTE2MSA5NC43NTk4IDE0Ljc0OEM5My44MzI3IDE1LjM1OTEgOTMuMTE2IDE2LjIxMyA5Mi42MTA0IDE3LjMwODZDOTIuMTA0NyAxOC40MDQyIDkxLjg1MTYgMTkuNjQ3NSA5MS44NTE2IDIxLjAzODFDOTEuODUxNiAyMi40Mjg2IDkyLjEwNDcgMjMuNjcyIDkyLjYxMDQgMjQuNzY3NkM5My4xMTYgMjUuODYzMSA5My44MzI4IDI2LjcyNjQgOTQuNzU5OCAyNy4zNTg0Qzk1LjY4NjggMjcuOTY5NCA5Ni43NjE0IDI4LjI3NTQgOTcuOTgzNCAyOC4yNzU0Qzk5LjE4NDIgMjguMjc1MyAxMDAuMjQ4IDI3Ljk2OTMgMTAxLjE3NSAyNy4zNTg0QzEwMi4xMDIgMjYuNzI2NCAxMDIuODE5IDI1Ljg2MzEgMTAzLjMyNCAyNC43Njc2QzEwMy44MyAyMy42NzIgMTA0LjA4MyAyMi40Mjg2IDEwNC4wODMgMjEuMDM4MUMxMDQuMDgzIDE5LjY0NzUgMTAzLjgzIDE4LjQwNDIgMTAzLjMyNCAxNy4zMDg2QzEwMi44MTkgMTYuMjEzIDEwMi4xMDIgMTUuMzU5MSAxMDEuMTc1IDE0Ljc0OEMxMDAuMjQ4IDE0LjExNjIgOTkuMTg0MSAxMy43OTk5IDk3Ljk4MzQgMTMuNzk5OFpNMjEzLjg0OCAxMy43OTk4QzIxMi42MjYgMTMuNzk5OCAyMTEuNTUxIDE0LjExNiAyMTAuNjI0IDE0Ljc0OEMyMDkuNjk3IDE1LjM1OTEgMjA4Ljk4IDE2LjIxMyAyMDguNDc1IDE3LjMwODZDMjA3Ljk2OSAxOC40MDQyIDIwNy43MTcgMTkuNjQ3NiAyMDcuNzE3IDIxLjAzODFDMjA3LjcxNyAyMi40Mjg2IDIwNy45NjkgMjMuNjcyIDIwOC40NzUgMjQuNzY3NkMyMDguOTggMjUuODYzMSAyMDkuNjk3IDI2LjcyNjMgMjEwLjYyNCAyNy4zNTg0QzIxMS41NTEgMjcuOTY5NCAyMTIuNjI2IDI4LjI3NTQgMjEzLjg0OCAyOC4yNzU0QzIxNS4wNDkgMjguMjc1NCAyMTYuMTEzIDI3Ljk2OTQgMjE3LjA0IDI3LjM1ODRDMjE3Ljk2NyAyNi43MjYzIDIxOC42ODQgMjUuODYzIDIxOS4xODkgMjQuNzY3NkMyMTkuNjk1IDIzLjY3MiAyMTkuOTQ3IDIyLjQyODYgMjE5Ljk0NyAyMS4wMzgxQzIxOS45NDcgMTkuNjQ3NiAyMTkuNjk1IDE4LjQwNDIgMjE5LjE4OSAxNy4zMDg2QzIxOC42ODQgMTYuMjEzIDIxNy45NjcgMTUuMzU5MSAyMTcuMDQgMTQuNzQ4QzIxNi4xMTMgMTQuMTE2IDIxNS4wNDkgMTMuNzk5OCAyMTMuODQ4IDEzLjc5OThaTTExNi41NjIgMjguMTQ5NEgxMTkuNTAxQzEyMS41MDMgMjguMTQ5NCAxMjMuMDUxIDI3LjUwNiAxMjQuMTQ2IDI2LjIyMDdDMTI1LjI2MyAyNC45MTQ0IDEyNS44MjIgMjMuMTg3MSAxMjUuODIyIDIxLjAzODFDMTI1LjgyMiAxOC44ODg5IDEyNS4yNjMgMTcuMTcxIDEyNC4xNDYgMTUuODg1N0MxMjMuMDUxIDE0LjU3OTcgMTIxLjUwMiAxMy45MjY4IDExOS41MDEgMTMuOTI2OEgxMTYuNTYyVjI4LjE0OTRaTTI2LjM3NSAxNy41ODRWMjQuNjE1MkwyMS4wOTk2IDI4LjEzMzhWMTQuMDY1NEwyNi4zNzUgMTcuNTg0Wk01My4wMTE3IDIwLjcyMTdINTYuODM1OUM1Ny45NTI2IDIwLjcyMTcgNTguODM4MSAyMC40MTY2IDU5LjQ5MTIgMTkuODA1N0M2MC4xNDQ0IDE5LjE5NDYgNjAuNDcwNyAxOC4zNzIzIDYwLjQ3MDcgMTcuMzM5OEM2MC40NzA3IDE2LjI4NjQgNjAuMTQ0MyAxNS40NTM4IDU5LjQ5MTIgMTQuODQyOEM1OC44MzgxIDE0LjIzMTkgNTcuOTUyNSAxMy45MjY4IDU2LjgzNTkgMTMuOTI2OEg1My4wMTE3VjIwLjcyMTdaTTcyLjY3MjkgMjAuNzIxN0g3Ni41NTk2Qzc3LjY3NjIgMjAuNzIxNyA3OC41NjE3IDIwLjQxNjYgNzkuMjE0OCAxOS44MDU3Qzc5Ljg4OTEgMTkuMTk0NiA4MC4yMjY2IDE4LjM3MjMgODAuMjI2NiAxNy4zMzk4QzgwLjIyNjUgMTYuMjg2NCA3OS44ODkgMTUuNDUzOCA3OS4yMTQ4IDE0Ljg0MjhDNzguNTYxNyAxNC4yMzE5IDc3LjY3NjEgMTMuOTI2OCA3Ni41NTk2IDEzLjkyNjhINzIuNjcyOVYyMC43MjE3WiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+" alt="Productions">
     <!-- The production name is the one thing in the top bar you can change, so it
          is the one thing that reacts to a pointer. Reads as text until you go
@@ -1581,8 +1762,8 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
     <button v-if="sketching" class="tb-cta" :class="{ locked: !take.objects.length }"
             :title="take.objects.length ? 'Name the job, confirm the checklist this sketch implies, and produce it' : 'Nothing to produce yet — interpret a sketch or a reference and accept what the agent proposes'"
             @click="startProduction">Start production →</button>
-    <span v-if="guide" class="tb-progress">CONCEPTS {{ learnedCount }} / {{ conceptList.length }}</span>
-    <button class="gtoggle" :class="{ on: guide }" :title="guide ? 'Hide the explanations' : 'Explain what the platform is doing, panel by panel'" @click="setGuide(!guide)">
+    <span v-if="guide" class="tb-progress" data-tour="concepts">CONCEPTS {{ learnedCount }} / {{ conceptList.length }}</span>
+    <button class="gtoggle" :class="{ on: guide, touring: tour.on }" data-tour="gtoggle" :title="guide ? 'Hide the explanations' : 'Explain what the platform is doing, panel by panel'" @click="setGuide(!guide)">
       <span class="sw"><i></i></span>Guide me through
     </button>
     <button class="tb-btn" @click="resetAll">Restart</button>
@@ -1591,8 +1772,8 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
   <div style="flex: 1; display: flex; min-height: 0;">
     <!-- rail — PRODUCTION over TAKE. Tasks never appear here; they live in the grid. -->
     <div class="rail">
-      <span class="rail-h">Productions · {{ prods.length }}</span>
-      <div v-for="p in prods" :key="p.id" class="pk" :class="{ active: prodId === p.id }" @click="openProd(p.id)"
+      <span class="rail-h" data-tour="prods">Productions · {{ prods.length }}</span>
+      <div v-for="p in prods" :key="p.id" class="pk" data-tour="prods" :class="{ active: prodId === p.id }" @click="openProd(p.id)"
            :title="p.profileLabel + ' · opened ' + p.opened">
         <div style="display: flex; align-items: flex-start; gap: var(--space-4);">
           <span class="pk-n" style="flex: 1;">{{ p.name }}</span>
@@ -1602,11 +1783,11 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
           <span>{{ takesOf(p.id).length }} take{{ takesOf(p.id).length === 1 ? '' : 's' }}</span><span>·</span><span>{{ rangeLabel(p) }}</span>
         </div>
       </div>
-      <button class="rail-new" @click="newProduction"><ic n="add"></ic> NEW PRODUCTION</button>
+      <button class="rail-new" data-tour="prods" @click="newProduction"><ic n="add"></ic> NEW PRODUCTION</button>
 
       <template v-if="prod">
-        <span class="rail-h" style="margin-top: var(--space-12); border-top: 1px solid var(--border-subtle); padding-top: var(--space-12);">Takes of {{ prod.name }}</span>
-        <div v-for="t in prodTakes" :key="t.id" class="tk" :class="{ active: takeId === t.id, live: isLive(t) }" @click="openTake(t.id)"
+        <span class="rail-h" data-tour="takes" style="margin-top: var(--space-12); border-top: 1px solid var(--border-subtle); padding-top: var(--space-12);">Takes of {{ prod.name }}</span>
+        <div v-for="t in prodTakes" :key="t.id" class="tk" data-tour="takes" :class="{ active: takeId === t.id, live: isLive(t) }" @click="openTake(t.id)"
              :title="TAKE_STATE[takeState(t)].hint + (isLive(t) ? ' · the take being built' : '') + ' · ' + t.items.length + ' checklist items' + (t.forkedFrom ? ' · forked from ' + takeName(t.forkedFrom) : '')">
           <div style="display: flex; align-items: flex-start; gap: var(--space-4);">
             <span class="tk-n" style="flex: 1;">{{ t.name }}</span>
@@ -1626,13 +1807,13 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
           <button v-if="!isLive(t)" class="tk-live" title="Make this the take being built — the team has validated it" @click.stop="askGoLive(t.id)">GO LIVE →</button>
           <button v-else class="tk-live" title="Stand this take down — the production goes back to having no live take" @click.stop="standDown(t.id)">STAND DOWN</button>
         </div>
-        <button class="rail-new" style="border-style: solid;" title="Propose another way of doing this production" @click="forkTake"><ic n="fork_right"></ic>  FORK A TAKE</button>
+        <button class="rail-new" data-tour="takes" style="border-style: solid;" title="Propose another way of doing this production" @click="forkTake"><ic n="fork_right"></ic>  FORK A TAKE</button>
       </template>
 
       <!-- what is being DONE. A lens on the workspace, not a permission: it
            changes what is featured, and every panel stays reachable from a panel
            header. v4 asked who you were; the role was always a proxy for this. -->
-      <div class="rl" style="margin-top: auto;" v-if="!sketching">
+      <div class="rl" data-tour="lens" style="margin-top: auto;" v-if="!sketching">
         <span class="rl-h">Working on</span>
         <label class="rl-wrap">
           <select class="rl-sel" :class="{ on: !!intent }" :value="intent"
@@ -1647,10 +1828,10 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
       <!-- WHAT ARE YOU DOING? Six buttons, in the middle of the rail, each one a
            workspace. Pressing one rearranges the panels and touches nothing else —
            see `applyTask`. -->
-      <div class="rl rl-tasks-wrap" style="margin-top: auto;">
+      <div class="rl rl-tasks-wrap" data-tour="tasks" style="margin-top: auto;">
         <span class="rl-h">What are you doing?</span>
         <div class="rl-tasks">
-          <button v-for="t in TASKS" :key="t.key" class="tk-btn"
+          <button v-for="t in TASKS" :key="t.key" class="tk-btn" :data-tour-task="t.key"
                   :class="{ on: task === t.key, thin: !take }"
                   :disabled="!take"
                   :title="take ? t.label + ' — ' + t.why + ' Opens: ' + t.panels.map(p => registry[p].title).join(', ') + '. Nothing in the take changes.' : 'Open a take first'"
@@ -1663,7 +1844,7 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
                back is the same gesture as going to a task rather than a different
                one hidden in a dropdown -->
           <span class="tk-sep" v-if="presets.length"></span>
-          <button v-for="p in presets" :key="p.id" class="tk-btn mine"
+          <button v-for="p in presets" :key="p.id" class="tk-btn mine" data-tour="mine"
                   :class="{ on: preset === p.id, thin: !take }"
                   :disabled="!take"
                   :title="p.name + ' — your own arrangement of ' + countAreas(p.root) + ' panels. Nothing in the take changes.'"
@@ -1673,7 +1854,7 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
           </button>
 
           <!-- the last one: save what is on screen, under a name -->
-          <button class="tk-btn add" :disabled="!take"
+          <button class="tk-btn add" data-tour="mine" :disabled="!take"
                   :title="take ? 'Save the panels you have on screen now as your own workspace, and name it' : 'Open a take first'"
                   @click="askSavePreset">
             <span class="plus">+</span>
@@ -1681,15 +1862,14 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
             <b>Save mine</b>
           </button>
         </div>
-        <span class="rl-why hint">Each one is a set of panels for that job. Pressing one moves panels only — the take, the checklist and everything on the timeline stay exactly as they are.</span>
-      </div>
-
-      <!-- in the SKETCH stage the task lens has nothing to key off: there is no
-           checklist yet, because the sketch has not proposed one. The rail says
-           what the stage is instead. -->
-      <div class="rl" v-if="sketching">
-        <span class="rl-h">Stage</span>
-        <span class="rl-why hint">SKETCH — draw it or drop a reference. The checklist, the tasks and the workspace all arrive when you start the production.</span>
+        <!-- v5.9.2 · NOTHING UNDER THE BUTTONS. Three blocks of prose used to sit
+             here, in the narrowest container in the build: what a task button does,
+             what the SKETCH stage is, and the task-versus-take rule at the foot of
+             the rail. All three are now steps in GUIDE ME THROUGH, pointed AT the
+             thing they describe and shown once, which is where an explanation
+             belongs. Leaving them here as well would be the same sentence twice,
+             and it would be the copy nobody reads that was costing the column its
+             height. -->
       </div>
 
       <!-- a workspace you named yourself: the arrangement on screen, saved and
@@ -1715,13 +1895,10 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
         </label>
       </div>
 
-      <div style="padding: var(--space-10) var(--space-4) var(--space-4); border-top: 1px solid var(--border-subtle);">
-        <span class="hint" style="font: var(--t-body-s); letter-spacing: var(--tr-body-s); color: var(--text-meta);"><b style="font-weight: inherit; color: var(--text-primary);">a task is something you complete. a take is something you choose.</b><br>one take per production is LIVE — only it records progress. held takes still take decisions · <ic n="compare_arrows"></ic> compares · any panel can recall a held take from its header</span>
-      </div>
     </div>
 
     <!-- tiled panels -->
-    <div ref="tileEl" style="flex: 1; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--gray-900);">
+    <div ref="tileEl" data-tour="tiles" style="flex: 1; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--gray-900);">
       <!-- minimised: header only, space handed back to the siblings -->
       <div v-for="a in minList" :key="'m' + a.id" class="pc-min" :class="a.axis === 'row' ? 'row' : 'col'"
            v-show="!maximizedId"
@@ -1735,7 +1912,7 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
       <!-- v-for over the LIVE set, not the current one: a panel from another workspace
            stays mounted and hidden, which is what lets you come back to it mid-work.
            See `liveAreas`. -->
-      <section v-for="a in liveAreas" :key="a.id" class="pc-area"
+      <section v-for="a in liveAreas" :key="a.id" class="pc-area" :data-tour-panel="a.node.editor"
                v-show="areaShown(a)"
                :style="{ transform: 'translate(' + a.rect.x + 'px,' + a.rect.y + 'px)', width: a.rect.w + 'px', height: a.rect.h + 'px' }"
                @pointerenter="hoverArea = a.id">
@@ -1969,6 +2146,79 @@ body.noguide .purpose, body.noguide .qr, body.noguide .hint { display: none !imp
         <button v-else-if="dialog.kind === 'pin'" class="cta" @click="doGoLive">Go live</button>
         <button v-else-if="dialog.kind === 'preset'" class="cta" @click="doSavePreset">Save workspace</button>
         <button v-else class="cta" @click="doFork">Fork take</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ GUIDE ME THROUGH — the tour layer ============
+       Not a panel and not a modal: a layer over the running app that rings one
+       thing, dims the rest, and says what the ringed thing does. The whole of
+       it is driven from `tour` in the script — the steps, the anchor and where
+       the card lands are all computed there, so nothing below has to know
+       which step it is showing. ============================================ -->
+  <div v-if="tour.on" class="tour" :class="{ deep: tour.deep }" role="dialog" aria-modal="true" aria-label="Guide me through">
+    <div class="tour-block"></div>
+    <template v-if="tour.rect">
+      <div class="tour-veil" :style="tourBoxStyle"></div>
+      <div class="tour-ring" :style="tourBoxStyle"></div>
+    </template>
+    <div v-else class="tour-full"></div>
+
+    <div ref="tourCardEl" class="tour-card" :style="tourCardStyle">
+      <span v-if="tour.rect && tour.side !== 'over'" class="tour-caret" :class="tour.side" :style="tourCaretStyle"></span>
+
+      <div class="tour-card-in">
+      <div class="tour-hd">
+        <span class="tour-chapter">{{ tourStep.chapter }}</span>
+        <span class="tour-count">{{ tour.i + 1 }} / {{ tourSteps.length }}</span>
+      </div>
+      <div class="tour-bar"><i :style="{ width: (100 * (tour.i + 1) / tourSteps.length) + '%' }"></i></div>
+
+      <span class="tour-title">{{ tourStep.title }}</span>
+      <p v-if="tourStep.body" class="tour-body" v-html="tourStep.body"></p>
+
+      <!-- the per-task walk's two extras: a diagram where a sentence cannot carry it,
+           and what you can actually DO, as a list rather than as a paragraph -->
+      <div v-if="tourStep.fig" v-html="tourStep.fig"></div>
+      <ul v-if="tourStep.bullets" class="tour-points">
+        <li v-for="p in tourStep.bullets" :key="p.k"><i></i><span><b>{{ p.k }}</b>: {{ p.v }}</span></li>
+      </ul>
+      <p v-if="tourStep.foot" class="tour-foot">{{ tourStep.foot }}</p>
+
+      <div v-if="tourStep.opens" class="tour-opens">
+        <span class="k-label">Opens {{ tourStep.opens.length }} panels</span>
+        <ul>
+          <li v-for="o in tourStep.opens" :key="o.key"><i></i><span><b>{{ o.title }}</b><template v-if="o.does">: {{ o.does }}</template></span></li>
+        </ul>
+      </div>
+      </div>
+
+      <!-- OUTSIDE THE SCROLLER. A card with four diagrams and seven points in it is a
+           card that scrolls, and a GOT IT below the fold is a dead end. The controls
+           are pinned and the reading scrolls past them. -->
+      <div class="tour-card-ft">
+      <!-- the hand-off: from a task's overview into a walk of that task's own panels -->
+      <button v-if="tourStep.deepTask" class="tour-deep-cta" @click="tourDeep(tourStep.deepTask)">
+        <i></i>Explain Task Workspace
+      </button>
+
+      <div class="tour-ft">
+        <button class="tour-back" :disabled="!tour.i" @click="tourBack">Back</button>
+        <div style="flex: 1;"></div>
+        <button v-if="tour.deep && tour.i === tourSteps.length - 1" class="cta good tour-go" @click="tourBackToMain">Back to the tour</button>
+        <button v-else class="cta good tour-go" @click="tourNext">{{ tour.i === tourSteps.length - 1 ? 'Finish' : 'Got it' }}</button>
+      </div>
+      <div class="tour-ft2">
+        <template v-if="tour.deep">
+          <button class="tour-link" @click="tourBackToMain">Back to the tour</button>
+          <button class="tour-link" @click="tourStayHere">Stay in this workspace</button>
+        </template>
+        <template v-else>
+          <button v-if="tourChapterLeft > 1" class="tour-link" @click="tourSkipChapter">Skip this section</button>
+          <button class="tour-link" @click="tourEnd(false)">Skip the tour</button>
+        </template>
+        <span class="tour-keys">↵ → ←</span>
+      </div>
       </div>
     </div>
   </div>
@@ -3752,6 +4002,530 @@ const registry = {
   glossary:   { title: 'Task vs take',         icon: 'menu_book', comp: 'ed-glossary',              grp: 'Help' },
   guide:      { title: 'Guide',                icon: 'help', comp: 'ed-guide',                 grp: 'Help' },
 };
+/* ---------- WHAT EACH PANEL IS FOR, IN ONE CLAUSE ----------
+   Folded into `registry` rather than typed into it, for one reason and it is not
+   laziness: the registry above is a column-aligned table of four short fields, and
+   a fifth field carrying a sentence would break the alignment on every row and make
+   the table unreadable as a table. So the sentences live together here, in the same
+   order, and the loop under them puts each one where it belongs — `registry[k].does`
+   — which is still the only place anything reads it from.
+
+   THE RULE FOR WRITING ONE. It says what the panel IS FOR, not what is in it, in a
+   clause short enough to scan in a list of six. Where a panel already carries a
+   `.purpose` line in its own template, this is that line cut to the bone rather
+   than a second opinion about the same panel.
+
+   These are what GUIDE ME THROUGH lists under each task button — "Opens: Timeline,
+   AI Content, Content Bin, Video Preview" told you the names of four things you had
+   never seen, which is not an explanation of anything. */
+const PANEL_DOES = {
+  /* doing the work */
+  checklist:  'the take as a list of steps, click one to focus its tasks and its panels',
+  stepeditor: 'only the controls the focused task actually sets, and DONE or FAIL',
+  grid:       'objects across, steps down, one cell per task, aggregated both ways',
+  /* the scene */
+  stage:      'the room in 3D, every object, where it sits, and what it can see',
+  preview:    'what one camera sees, at its real framing and lens',
+  devices:    'the live object inventory, provisional and built geometry in this take',
+  measure:    'distances, trims and clearances, appearing as the steps that feed them close',
+  rigging:    'what hangs, what it weighs, and where the weight lands',
+  sightlines: 'what each block of the audience can actually see',
+  align:      'where two beams meet, and what happens in the overlap',
+  photometry: 'how much light is really on the surface, and where it falls off',
+  /* catalogue */
+  projlib:    'pick a projector, and it drops into the scene with its own checklist',
+  camlib:     'pick a camera, and it lands in the scene with its own POV',
+  ledlib:     'the tile catalogue, you buy a tile and the shape decides how many',
+  ledtile:    'one tile at the size it really is, front, back, and turned round',
+  serverlib:  'the machines that push the canvas, and what each one can carry',
+  /* systems */
+  wiring:     'the signal path, runs, ports and machines, read off the scene rather than typed in',
+  sequence:   'one track’s running order, carrying its own checklist',
+  transport:  'cases, weights, assignments and dock windows',
+  power:      'what it draws, on which phase, against the breaker',
+  network:    'addresses, ports, and what has to be in time with what',
+  genlock:    'one clock, and how late the picture is by the time anybody sees it',
+  /* media */
+  timeline:   'sequences, tracks and clips, and the clock every other panel follows',
+  videopreview: 'one picture, what the sequence is showing now, with safe-area guides',
+  bin:        'the media library, drag from here onto a track or straight onto an LED',
+  aiden:      'content made here, for when there is none to load yet',
+  canvas:     'every output side by side, and whether one machine can push them all',
+  cues:       'the running order, and what calls each cue',
+  mediaspec:  'what each output needs, against what is actually loaded',
+  /* running the job */
+  cost:       'what this take costs, line by line, against the others on the table',
+  people:     'who is on what, tasks are handed out and takes never are',
+  prods:      'every production in flight, in one board',
+  deadline:   'the dates, and the work burning down against them',
+  kanban:     'a card is a job, not a cell, and moving one writes the grid',
+  gantt:      'when each group of work happens, and what waits on what',
+  analytics:  'where the time actually goes',
+  schedule:   'the call sheet day by day, and the headcount each call needs',
+  risk:       'what could hurt somebody, and the method that stops it',
+  approvals:  'who signed off what, on which take',
+  green:      'the freight and the power, as one number a tender can ask for',
+  /* site */
+  survey:     'what the room actually is, and where it differs from the drawing',
+  snag:       'what is wrong on site, who is fixing it, and whether anybody checked',
+  /* takes */
+  takes:      'the ways this production could be done, and which one is live',
+  compare:    'two takes side by side, coverage, cost, flags, and the values that differ',
+  /* the agent */
+  sketch:     'draw the room, and the agent reads the drawing and proposes the geometry',
+  refs:       'reference images, read by the vision model for intent and dimensions',
+  agent:      'what the agent proposes, nothing in here has happened yet',
+  /* help */
+  glossary:   'a task is something you complete, a take is something you choose',
+  guide:      'the concepts this platform is built on, ticking off as you meet them',
+};
+/* ---------- THE FIGURES ----------
+   Inline SVG, and nothing else: no files to lose, no request to fail, and they
+   inherit the layer's accent, so the same drawing comes out green in the main tour
+   and magenta in the per-task one without a second copy of it.
+
+   They are diagrams, not decoration. Each one draws the thing the bullet beside it
+   is claiming, which is the only reason to spend a card's height on a picture. */
+const FIG_GRID = `<g stroke="currentColor" opacity=".16" stroke-width="1"><path d="M0 21h120M0 42h120M0 63h120M24 0v84M48 0v84M72 0v84M96 0v84"/></g>`;
+
+const TOUR_FIG = {
+
+  /* the pad: the same deck in both views, the ghost it throws, and a cut */
+  sketchViews: `<div class="tour-fig c4">
+    <figure><svg viewBox="0 0 120 84">${FIG_GRID}
+      <path d="M26 62V36h30V26h38v36z" fill="var(--status-guide)" fill-opacity=".14" stroke="var(--status-guide)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M108 58V30" stroke="currentColor" stroke-width="1.5" opacity=".65"/>
+      <path d="M104 35l4-6 4 6" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".65"/>
+    </svg><figcaption>Plan · looking down</figcaption></figure>
+    <figure><svg viewBox="0 0 120 84">${FIG_GRID}
+      <path d="M0 64h120" stroke="currentColor" stroke-width="1.5" opacity=".5"/>
+      <path d="M30 64V32h60v32z" fill="var(--status-guide)" fill-opacity=".14" stroke="var(--status-guide)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M20 64V32" stroke="currentColor" stroke-width="1" opacity=".55" stroke-dasharray="3 3"/>
+    </svg><figcaption>Elevation · from the audience</figcaption></figure>
+    <figure><svg viewBox="0 0 120 84">${FIG_GRID}
+      <path d="M60 26l30 13-30 13-30-13z" fill="var(--status-guide)" fill-opacity=".18" stroke="var(--status-guide)" stroke-width="1.6" stroke-dasharray="4 3" stroke-linejoin="round"/>
+      <path d="M30 39v17l30 13V52z" fill="var(--status-guide)" fill-opacity=".07" stroke="var(--status-guide)" stroke-width="1.6" stroke-dasharray="4 3" stroke-linejoin="round"/>
+      <path d="M90 39v17L60 69V52z" fill="var(--status-guide)" fill-opacity=".12" stroke="var(--status-guide)" stroke-width="1.6" stroke-dasharray="4 3" stroke-linejoin="round"/>
+    </svg><figcaption>Live ghost, in the room</figcaption></figure>
+    <figure><svg viewBox="0 0 120 84">${FIG_GRID}
+      <path d="M22 62V30h54v14h22v18z" fill="var(--text-primary)" fill-opacity=".10" stroke="var(--text-primary)" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="46" cy="47" r="9" fill="var(--surface-sunken)" stroke="var(--status-guide)" stroke-width="2" stroke-dasharray="4 3"/>
+      <path d="M76 22h26v22H76z" fill="none" stroke="var(--status-guide)" stroke-width="2" stroke-dasharray="4 3"/>
+    </svg><figcaption>Option · carve into it</figcaption></figure>
+  </div>`,
+
+  /* the Scene Study's two lamps, which is the thing a sentence cannot show */
+  wireRender: `<div class="tour-fig c2">
+    <figure><svg viewBox="0 0 160 96">
+      <g stroke="currentColor" opacity=".22" stroke-width="1"><path d="M0 70h160M0 82h160M20 58v38M52 58v38M84 58v38M116 58v38M148 58v38"/></g>
+      <path d="M30 70V34h44v36z" fill="currentColor" fill-opacity=".07" stroke="currentColor" stroke-width="1.6" opacity=".85"/>
+      <path d="M86 70V46h40v24z" fill="currentColor" fill-opacity=".07" stroke="currentColor" stroke-width="1.6" opacity=".85"/>
+      <path d="M30 34h44M86 46h40" stroke="var(--status-guide)" stroke-width="1.6"/>
+    </svg><figcaption>Working view · flat and shadowless, so a position is never ambiguous</figcaption></figure>
+    <figure><svg viewBox="0 0 160 96">
+      <rect x="0" y="58" width="160" height="38" fill="#000" opacity=".55"/>
+      <path d="M74 0l38 62H36z" fill="var(--status-guide)" fill-opacity=".13"/>
+      <ellipse cx="60" cy="72" rx="34" ry="5" fill="#000" opacity=".55"/>
+      <ellipse cx="112" cy="72" rx="26" ry="4" fill="#000" opacity=".5"/>
+      <path d="M30 70V34h44v36z" fill="var(--text-primary)" fill-opacity=".34" stroke="var(--text-primary)" stroke-opacity=".5" stroke-width="1"/>
+      <path d="M52 70V34h22v36z" fill="#000" opacity=".30"/>
+      <path d="M86 70V46h40v24z" fill="var(--status-guide)" fill-opacity=".55" stroke="var(--status-guide)" stroke-width="1"/>
+      <path d="M86 74h40" stroke="var(--status-guide)" stroke-width="3" opacity=".35"/>
+    </svg><figcaption>Render · a real key, shadows, and the wall actually emitting</figcaption></figure>
+  </div>`,
+
+  /* one sequence, drawn the way it is drawn */
+  timeline: `<div class="tour-fig c1">
+    <figure><svg viewBox="0 0 320 104">
+      <g stroke="currentColor" opacity=".3" stroke-width="1"><path d="M8 14h304M40 8v6M80 8v6M120 8v6M160 8v6M200 8v6M240 8v6M280 8v6"/></g>
+      <rect x="64" y="6" width="150" height="5" rx="2.5" fill="var(--status-guide)" opacity=".45"/>
+      <g font-size="8" fill="currentColor" opacity=".6"><text x="8" y="32">V2</text><text x="8" y="56">V1</text><text x="8" y="80">A1</text></g>
+      <g stroke="currentColor" opacity=".16"><path d="M26 36h286M26 60h286M26 84h286"/></g>
+      <path d="M96 22h84v14H96z" fill="var(--status-guide)" fill-opacity=".55" stroke="var(--status-guide)" stroke-width="1"/>
+      <path d="M96 36l10-14H96z" fill="var(--surface-panel)"/><path d="M180 36l-10-14h10z" fill="var(--surface-panel)"/>
+      <path d="M34 46h96v14H34z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-opacity=".5" stroke-width="1"/>
+      <path d="M140 46h130v14H140z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-opacity=".5" stroke-width="1"/>
+      <path d="M34 70h236v14H34z" fill="currentColor" fill-opacity=".12" stroke="currentColor" stroke-opacity=".35" stroke-width="1" stroke-dasharray="3 3"/>
+      <path d="M150 4v92" stroke="var(--status-guide)" stroke-width="1.6"/>
+      <path d="M144 4h12l-6 7z" fill="var(--status-guide)"/>
+    </svg><figcaption>V2 draws over V1, audio runs underneath, and the playhead is the take's one clock</figcaption></figure>
+  </div>`,
+
+  /* the bin's whole argument is the gesture */
+  binDrag: `<div class="tour-fig c2">
+    <figure><svg viewBox="0 0 160 96">
+      <rect x="10" y="12" width="44" height="30" rx="3" fill="var(--status-guide)" fill-opacity=".30" stroke="var(--status-guide)" stroke-width="1.4"/>
+      <path d="M22 34l8-9 6 6 5-5 7 8z" fill="var(--surface-panel)" opacity=".7"/>
+      <path d="M58 32c26 2 34 14 38 30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 3" opacity=".7"/>
+      <path d="M92 58l6 8 6-9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/>
+      <g stroke="currentColor" opacity=".2"><path d="M20 76h130M20 90h130"/></g>
+      <rect x="76" y="68" width="60" height="14" rx="2" fill="var(--status-guide)" fill-opacity=".45" stroke="var(--status-guide)" stroke-width="1"/>
+    </svg><figcaption>Drop it on a track</figcaption></figure>
+    <figure><svg viewBox="0 0 160 96">
+      <rect x="10" y="12" width="44" height="30" rx="3" fill="var(--status-guide)" fill-opacity=".30" stroke="var(--status-guide)" stroke-width="1.4"/>
+      <path d="M22 34l8-9 6 6 5-5 7 8z" fill="var(--surface-panel)" opacity=".7"/>
+      <path d="M58 30c30 0 40 10 44 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 3" opacity=".7"/>
+      <path d="M98 50l4 8 8-6" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/>
+      <path d="M78 58h64v28H78z" fill="var(--status-guide)" fill-opacity=".45" stroke="var(--status-guide)" stroke-width="1.4"/>
+      <g stroke="var(--surface-panel)" opacity=".45" stroke-width="1"><path d="M94 58v28M110 58v28M126 58v28M78 72h64"/></g>
+      <path d="M0 90h160" stroke="currentColor" stroke-width="1.5" opacity=".4"/>
+    </svg><figcaption>Or straight onto the wall</figcaption></figure>
+  </div>`,
+};
+
+/* ---------- AND THE SAME PANELS AT LENGTH ----------
+   `does` is the clause that fits in a list of six. This is what the per-task walk
+   shows when a panel is the only thing on screen and the ring is round it.
+
+   IT IS NOT A LONGER PARAGRAPH. A wall of prose in a 380px card is a wall of prose
+   nobody reads, and the first version of this was exactly that. Each entry is now a
+   LEAD of one sentence, a short list of things you can actually DO, and, where a
+   sentence genuinely cannot carry it, a FIGURE. Four panels earn a figure: the two
+   views the pad draws in, the two lamps the Scene Study has, the shape of a
+   sequence, and the drag that puts media on a track.
+
+   THE RULE FOR A BULLET. A key of one to four words, then a clause that says what
+   happens, not what exists. "Two views, one room" beats "Views", and "hold OPTION
+   and the same tool carves" beats "supports boolean subtraction". */
+const PANEL_DEEP = {
+
+  /* ---------------- the four that carry a figure ---------------- */
+  sketch: {
+    lead: 'Paper with a scale on it. You draw the room here, and the room appears in the Scene Study while you are still drawing it.',
+    fig: 'sketchViews',
+    bullets: [
+      { k: 'Two views, one room', v: 'PLAN looks down, ELEVATION looks at it from the audience. A shape belongs to the view it was drawn in, so switching tabs never reinterprets it, and the other view’s strokes stay on the page as shadows.' },
+      { k: 'LIVE ON, and it is already 3D', v: 'every gesture pushes a translucent GHOST into the room as you make it. A ghost is a proposal, so the scene measures into your drawing rather than into the take until you press BUILD 3D.' },
+      { k: 'Freehand is a real tool', v: 'PEN is pressure sensitive, and a curve you draw stays a curve, because the fit keeps its arcs instead of reducing them to a polygon.' },
+      { k: 'Hold OPTION to carve', v: 'the same rect, ellipse or pen becomes a cut. A cut wholly inside is a hole and the outline survives with its arcs. A cut that crosses the outline goes through the clipper, and that span comes back straight.' },
+      { k: 'Cuts are cumulative, and reversible', v: 'each one stays a shape you can see and delete, and deleting it gives the solid its piece back.' },
+      { k: 'Built means locked', v: 'a committed shape goes recessive and drops out of the proposal, so the next gesture is about the next thing. UNLOCK is one click in its own row.' },
+    ],
+    foot: 'The grid is the scale: one square is one metre until you say otherwise.',
+  },
+
+  stage: {
+    lead: 'A small 3D application living in this frame, not a picture of one. It is a separate tool over a versioned bridge, which is why it can be iterated without touching anything else.',
+    fig: 'wireRender',
+    bullets: [
+      { k: 'Put things in the room', v: 'PROJ, CAM, LED and BASE drop a projector, a camera, an LED wall or a tracking base onto the floor. Pick the venue, or hide the venue mesh and work on bare grid.' },
+      { k: 'Move it like a 3D app', v: 'orbit and zoom to look, W to move, E to rotate, and a snap that holds you to a 0.5 m grid and 15 degrees. ISO, FRONT, SIDE and TOP are the four looks worth having a button for.' },
+      { k: 'Size it in metres, not in units', v: 'type the longest side of the real thing and the model is scaled to it. Ten per cent bigger and smaller are there for the argument after that.' },
+      { k: 'Measure anything', v: 'the ruler spans any two points, and the scene derives the figures nobody should ever type, among them throw distance, pixel density, beam overlap and coverage. The take stores them as derived and refuses a typed one.' },
+      { k: 'RENDER is the same scene under another lamp', v: 'the working view is deliberately flat and shadowless so a position is never ambiguous. RENDER drops those lights, puts a real key on the stage with shadows, and lets the LED walls actually emit. It is for judging how it LOOKS, not where it is.' },
+      { k: 'Light it with a real sky', v: 'the HDR skies light the room and the surfaces panel decides what the floor, decks and walls are made of.' },
+      { k: 'It is the far end of the Sketch Pad', v: 'ghosts from the pad land here as translucent provisionals, and BUILD 3D turns them into geometry you can select, move and measure.' },
+    ],
+    foot: 'The take owns the facts, the tool owns the view. The one crossing is measurement, and it only ever travels this way.',
+  },
+
+  timeline: {
+    lead: 'Where the show gets built. A sequence is one cue: the tracks in it, the clips on them, and the single picture they add up to.',
+    fig: 'timeline',
+    bullets: [
+      { k: 'The sequence is the unit', v: 'not the track. A wall shows one picture, so the whole sequence is routed to one surface and cropped to one frame. Name it, and a running order can call it.' },
+      { k: 'Stacked like an NLE', v: 'V2 draws over V1, so the highest video track carrying a live clip is what you see. Audio runs underneath and is never thrown at a wall.' },
+      { k: 'Trim and fade by dragging', v: 'drag a clip end to trim, drag the corner to fade up from black or out to it, and drag the middle of the ramp to bend it.' },
+      { k: 'Loop a region', v: 'mark it on the ruler, then drag the bar to slide it or an end to trim it, which is how you watch one moment forty times.' },
+      { k: 'One clock, everywhere', v: 'the playhead here is the playhead in the Scene Study, in every Camera POV and in the Video Preview. Scrub here and the wall in the room moves with you.' },
+      { k: 'Zoom to what you are doing', v: 'Cmd or Ctrl and the wheel zooms at the pointer, and one button fits the whole show back in the panel.' },
+    ],
+    foot: 'Duplicate a sequence and you get its tracks, its clips, its route and its crop, which is how a second version of a cue starts.',
+  },
+
+  bin: {
+    lead: 'The shelf. Everything the take has to play, and one gesture to use it.',
+    fig: 'binDrag',
+    bullets: [
+      { k: 'Drag it where you want it', v: 'onto a lane in the Timeline to place a clip, or straight onto an LED wall in the room to throw it there. No import step and no dialog in between.' },
+      { k: 'Get files in the easy way', v: 'drop them on the panel from the desktop, or use the picker. They stay on your machine.' },
+      { k: 'Two ways to look', v: 'grid of thumbnails for picking a cue by eye, list of rows for checking a delivery against a running order.' },
+      { k: 'It tells you what is used', v: 'every item says whether it is already on a track in this take or sitting here unused, which is the difference between a shelf and a pile.' },
+    ],
+  },
+
+  /* ---------------- everything else: lead, and what you do ---------------- */
+  preview: {
+    lead: 'The same scene rendered through one camera at its real focal length, rather than an approximation of it.',
+    bullets: [
+      { k: 'Pick the camera', v: 'and you get what that body and lens actually frame, which is the only way to answer whether a shot holds before anybody is in the room.' },
+      { k: 'It is on the take clock', v: 'so scrubbing the Timeline moves this picture too.' },
+      { k: 'One geometry, seen twice', v: 'this is not a second copy of the venue, it is the same scene under a different camera.' },
+    ],
+  },
+  camlib: {
+    lead: 'The catalogue of camera bodies and lenses, per take.',
+    bullets: [
+      { k: 'Picking one places it', v: 'the camera lands in the scene and gets its own POV rather than just being recorded as a choice.' },
+      { k: 'It brings its own work', v: 'the checklist steps that camera implies arrive with it.' },
+      { k: 'Per take on purpose', v: 'pricing one body against another is a fork, not an argument.' },
+    ],
+  },
+  devices: {
+    lead: 'Everything in the take as a list rather than as a space.',
+    bullets: [
+      { k: 'Select what you cannot click', v: 'the fastest way to reach something hidden behind something else in the viewport.' },
+      { k: 'Provisional against built', v: 'it says which is which, so a ghost is never mistaken for geometry.' },
+      { k: 'The scene, countable', v: 'when the room is crowded this is the only honest inventory of it.' },
+    ],
+  },
+  photometry: {
+    lead: 'How much light is really landing on the surface, cell by cell, rather than what the projector is rated for.',
+    bullets: [
+      { k: 'Read off the geometry', v: 'throw, distance and angle come out of the scene, so moving a projector changes the answer with nobody retyping anything.' },
+      { k: 'Uniformity is the number', v: 'a good average over a hot centre and dark corners is not a usable picture.' },
+      { k: 'Per surface', v: 'each wall and deck is measured on its own, because that is how they are lit.' },
+    ],
+  },
+  align: {
+    lead: 'Where two beams overlap, and what happens inside the overlap.',
+    bullets: [
+      { k: 'The scene already knows', v: 'it works out whether two projectors meet and publishes it. This is the panel that acts on it.' },
+      { k: 'Set the blend against real geometry', v: 'rather than guessing and correcting on site at two in the morning.' },
+      { k: 'Gaps show up too', v: 'two beams that do not quite meet are the same calculation with the opposite answer.' },
+    ],
+  },
+  projlib: {
+    lead: 'The catalogue of projectors, with the lumens, the lens options, the weight and the price.',
+    bullets: [
+      { k: 'Picking one places it', v: 'it drops into the scene and brings its own block of checklist steps.' },
+      { k: 'Compare before you commit', v: 'the figures that decide it are in the row, not behind it.' },
+      { k: 'Per take', v: 'a Barco take and a Christie take are two options you can hold at once.' },
+    ],
+  },
+  ledtile: {
+    lead: 'One tile, drawn at the size it actually is, and turned round.',
+    bullets: [
+      { k: 'The front is what pitch means', v: 'the gap between emitters, drawn, rather than a number you have to imagine.' },
+      { k: 'The back is whether it can be built', v: 'power in and out, data in and out, the PSU, the receiving card and the locks it hangs on.' },
+      { k: 'Drag to turn it', v: 'it is one object with six faces, so you look at the side you need.' },
+    ],
+  },
+  ledlib: {
+    lead: 'The tile catalogue, and the per square metre figures you actually decide on.',
+    bullets: [
+      { k: 'You buy a tile, not a screen', v: 'the shape you drew decides how many of it the wall needs.' },
+      { k: 'Pitch, weight, draw, price', v: 'the four numbers that settle it, per square metre, side by side.' },
+      { k: 'Click one to see it', v: 'the panel beside it shows that tile at its real size.' },
+    ],
+  },
+  canvas: {
+    lead: 'Every output laid side by side as one canvas, measured, so the show has a pixel count instead of three walls with separate ids.',
+    bullets: [
+      { k: 'One frame, many surfaces', v: 'this is the thing a sequence is actually laid out on.' },
+      { k: 'Can one machine push it', v: 'the question that decides how many servers go on the truck, answered here rather than on the day.' },
+      { k: 'Measured, not estimated', v: 'the pixel count comes off the geometry you built.' },
+    ],
+  },
+  aiden: {
+    lead: 'Content made here, for when there is none to load yet.',
+    bullets: [
+      { k: 'Generated locally', v: 'through Draw Things on your own machine. No cloud service anywhere in the path.' },
+      { k: 'What comes back is real media', v: 'drag it onto a track or into the bin like anything else.' },
+      { k: 'It sits between its two targets', v: 'you cannot drag between panels that are not both on screen, which is why this workspace holds all three.' },
+    ],
+  },
+  videopreview: {
+    lead: 'The monitor. The highest video track carrying a live clip is what you see.',
+    bullets: [
+      { k: 'The transport drives everything', v: 'play, pause, stop and scrub move the take clock, so the wall in the room follows this panel.' },
+      { k: 'It does not edit', v: 'deliberately. There is one place to cut a show and this is not it.' },
+      { k: 'Safe areas', v: 'the frame on its own at the right aspect, with action safe and title safe over it, which is how you find out whether a lower third survives the bezel.' },
+    ],
+  },
+  cues: {
+    lead: 'The running order, and what calls each cue.',
+    bullets: [
+      { k: 'Every trigger a show uses', v: 'an operator pressing GO, LTC or MTC timecode, OSC, MIDI.' },
+      { k: 'The cues are your sequences', v: 'the ones you named on the Timeline, so this is a view of the show rather than a second copy that can disagree with it.' },
+      { k: 'Order is the document', v: 'this is the list somebody reads down on the night.' },
+    ],
+  },
+  mediaspec: {
+    lead: 'Will this play.',
+    bullets: [
+      { k: 'Two halves, finally compared', v: 'the take knows what each output wants, the bin knows what was actually loaded, and until this panel nothing checked one against the other.' },
+      { k: 'Codec, resolution, frame rate', v: 'the three things that stop a file on the day.' },
+      { k: 'And what is simply missing', v: 'an output with nothing loaded is the failure nobody notices in time.' },
+    ],
+  },
+  wiring: {
+    lead: 'One node per thing in the scene, and you route between them.',
+    bullets: [
+      { k: 'Read off the room', v: 'a camera added in the viewport turns up here needing an input, and a 4K canvas turns up needing two outputs.' },
+      { k: 'Nothing to keep in step', v: 'there is one source for it, so the drawing cannot go stale against the rig.' },
+      { k: 'Runs, ports, machines', v: 'the signal path end to end, as a thing you can hand to somebody.' },
+    ],
+  },
+  power: {
+    lead: 'What the rig draws, on which phase, against the breaker you are actually on.',
+    bullets: [
+      { k: 'Totalled off the scene', v: 'a projector swap changes the answer without anybody re-entering a load.' },
+      { k: 'Phase balance first', v: 'the part people get wrong, so it is the part shown first.' },
+      { k: 'Against a real breaker', v: 'a headroom figure is only useful against the supply you have been given.' },
+    ],
+  },
+  network: {
+    lead: 'Addresses, ports, and what has to be in time with what.',
+    bullets: [
+      { k: 'The other half of wiring', v: 'that panel says which cable goes where, this says whether the machines on the ends can find each other.' },
+      { k: 'Addressing as a plan', v: 'not as something discovered on site with a laptop.' },
+      { k: 'And who needs the clock', v: 'the devices that must agree about when now is.' },
+    ],
+  },
+  genlock: {
+    lead: 'One clock for the whole system, and how late the picture is by the time anybody sees it.',
+    bullets: [
+      { k: 'Every stage adds frames', v: 'capture, processing, the server, the wall. The panel shows the chain.' },
+      { k: 'The total is the number', v: 'because that is what a camera cut or an IMAG feed has to live with.' },
+      { k: 'Who is locked to what', v: 'a reference that half the rig ignores is not a reference.' },
+    ],
+  },
+  rigging: {
+    lead: 'What hangs, what it weighs, and where the weight lands.',
+    bullets: [
+      { k: 'Point and running loads', v: 'per hang and per bar, plus the total, read off the objects in the scene.' },
+      { k: 'It cannot go stale', v: 'move a truss and the numbers move, which a spreadsheet has never managed.' },
+      { k: 'Against what the roof allows', v: 'a load is only a number until it is compared to the venue.' },
+    ],
+  },
+  sightlines: {
+    lead: 'What each block of the audience can actually see, and what is in the way.',
+    bullets: [
+      { k: 'It settles trim heights', v: 'and where a tower can stand, which are decisions nothing else in the build can make.' },
+      { k: 'A plan view cannot do this', v: 'because a plan has no eye height in it.' },
+      { k: 'Per block', v: 'the cheap seats and the front row are different questions.' },
+    ],
+  },
+  measure: {
+    lead: 'Distances, trims and clearances, read off the model.',
+    bullets: [
+      { k: 'They arrive as work closes', v: 'a figure appears when the step that feeds it is done, so it is a measurement somebody took.' },
+      { k: 'Never typed', v: 'derived figures come from the geometry, and the take refuses a hand-entered one.' },
+      { k: 'The numbers you get asked for', v: 'the ones a venue, a rigger or a client wants in writing.' },
+    ],
+  },
+  survey: {
+    lead: 'What the room actually is, against what the drawing said.',
+    bullets: [
+      { k: 'Photographs and dimensions as found', v: 'the record of the place rather than the plan of it.' },
+      { k: 'The differences are the point', v: 'every panel upstream assumes the plan is true, and on site it stops being.' },
+      { k: 'Before it costs anything', v: 'a column nobody drew is cheaper to find now than at load-in.' },
+    ],
+  },
+  snag: {
+    lead: 'What is wrong on site, who is fixing it, and whether anybody checked.',
+    bullets: [
+      { k: 'A snag is not a task', v: 'it is a defect against the take, which is why it has a list of its own.' },
+      { k: 'Owned and closed', v: 'each one carries somebody’s name and a state, so nothing is fixed only in conversation.' },
+      { k: 'The checklist stays clean', v: 'planned work and unplanned trouble do not belong in one list.' },
+    ],
+  },
+  checklist: {
+    lead: 'The take as a list, and the navigation for everything around it.',
+    bullets: [
+      { k: 'Item, step, task', v: 'an item is a group of steps, and a step applied to one object is a task.' },
+      { k: 'Clicking focuses the workspace', v: 'pick the group you are pursuing and the panels it needs come up.' },
+      { k: 'Dropping a step is a decision', v: 'not progress, which is why a held take can do it too.' },
+    ],
+  },
+  stepeditor: {
+    lead: 'The focused task, and only the controls that task actually sets.',
+    bullets: [
+      { k: 'No menu to hunt through', v: 'the task knows what it sets, so it summons its own control.' },
+      { k: 'DONE and FAIL', v: 'a value on its own never tells you whether the work was done, done wrongly, or done and since invalidated.' },
+      { k: 'One step, every object', v: 'apply it across the whole collection when that is what you are doing.' },
+    ],
+  },
+  grid: {
+    lead: 'Objects across, steps down, one cell per task.',
+    bullets: [
+      { k: 'Read it two ways', v: 'down a column for how far one object has got, across a row for how far one step has got.' },
+      { k: 'Nobody writes a status report', v: 'the status is already the data.' },
+      { k: 'Work in any order', v: 'the grid does not care which cell you close next.' },
+    ],
+  },
+  schedule: {
+    lead: 'The days of the production, the calls on each of them, and the headcount each call needs.',
+    bullets: [
+      { k: 'The bridge to the crew', v: 'the checklist says what has to happen, this says when and with how many.' },
+      { k: 'Calls, not shifts', v: 'a call is the unit a crew actually books.' },
+      { k: 'Against the window', v: 'the days you have are the days the production declared.' },
+    ],
+  },
+  people: {
+    lead: 'Who is on what.',
+    bullets: [
+      { k: 'Tasks are handed out', v: 'they are small enough to be, which is what makes them tasks.' },
+      { k: 'Overload is visible', v: 'durations are recorded, so it can tell you when somebody has taken on more than the deadline allows.' },
+      { k: 'Takes are never assigned', v: 'nobody owns an option.' },
+    ],
+  },
+  deadline: {
+    lead: 'The dates, and the work burning down against them.',
+    bullets: [
+      { k: 'Down, not up', v: 'the question a producer asks is how much is left, not what percentage you are at.' },
+      { k: 'It attaches to anything', v: 'the whole take, one step across every object, or a single task.' },
+      { k: 'Off the real dates', v: 'the line comes from the production window, not from a constant somebody picked.' },
+    ],
+  },
+  gantt: {
+    lead: 'When each group of work happens, and what waits on what.',
+    bullets: [
+      { k: 'The shape of the job', v: 'over time, which is the view that answers whether a slip moves the load in.' },
+      { k: 'Dependencies are visible', v: 'a bar that cannot start until another finishes says so.' },
+      { k: 'Wide and shallow', v: 'which is why this workspace is the only one laid out sideways.' },
+    ],
+  },
+  kanban: {
+    lead: 'The same work as cards you move.',
+    bullets: [
+      { k: 'A card is a job, not a cell', v: 'it is the unit somebody actually picks up.' },
+      { k: 'Moving one writes the grid', v: 'the board and the task state are one fact, not two to keep in step.' },
+      { k: 'Columns are states', v: 'to do, doing, in review, done, and nothing in between to argue about.' },
+    ],
+  },
+  cost: {
+    lead: 'What this take costs, line by line, off the kit actually in the scene.',
+    bullets: [
+      { k: 'Per take, on purpose', v: 'the whole point of forking is to price a second way of doing the job.' },
+      { k: 'From the scene, not a form', v: 'add a projector in the room and the total moves.' },
+      { k: 'Comparable', v: 'two takes side by side is the conversation this panel exists for.' },
+    ],
+  },
+  risk: {
+    lead: 'What could hurt somebody, and the method that stops it.',
+    bullets: [
+      { k: 'Every risk carries its control', v: 'a hazard listed without one is not an assessment.' },
+      { k: 'And an owner', v: 'so the method statement names who is responsible for it.' },
+      { k: 'A view, not a file', v: 'the document a venue asks for is generated from the take rather than written once and forgotten.' },
+    ],
+  },
+  approvals: {
+    lead: 'Who signed off what, on which take.',
+    bullets: [
+      { k: 'A sign-off is against decisions', v: 'so it travels with the take that holds them.' },
+      { k: 'Going live is when it matters', v: 'swapping takes is exactly the moment you need to know what is still signed.' },
+      { k: 'Dated and named', v: 'an approval nobody can attribute is not one.' },
+    ],
+  },
+  green: {
+    lead: 'The freight and the power, as one number a tender can ask for.',
+    bullets: [
+      { k: 'Off the same objects', v: 'as the transport and power panels, so nothing has to be estimated twice.' },
+      { k: 'Per take', v: 'which makes a lighter way of doing the job a thing you can actually show.' },
+      { k: 'A figure, not a gesture', v: 'it comes from the kit list, so it survives being asked about.' },
+    ],
+  },
+};
+
+Object.keys(registry).forEach(k => {
+  registry[k].does = PANEL_DOES[k] || '';
+  /* a panel nobody has written at length falls back to its clause, which is the right
+     answer for one reached through a dropdown rather than through a task */
+  registry[k].deep = PANEL_DEEP[k] || { lead: PANEL_DOES[k] || '', bullets: [] };
+});
+
 const PANEL_GROUPS = ['Doing the work', 'The agent', 'The scene', 'Media', 'Catalogue', 'Systems', 'Site', 'Running the job', 'Takes', 'Help'];
 
 /* ==================================================================
@@ -3884,7 +4658,7 @@ const TASKS = [
     why: 'The tile, how many of it the shape needs, and the pixels that makes.',
     panels: ['stage', 'ledtile', 'ledlib', 'canvas'] },
   { key: 'content', label: 'Sequence Content', icon: 'timeline',
-    why: 'The cues: what plays, when, and what it looks like — and content made here when there is none to load.',
+    why: 'The cues: what plays, when, and what it looks like, plus content made here when there is none to load.',
     /* ALL FOUR, and the ORDER is the gesture: what Aiden draws is dragged onto the
        timeline or into the bin, and you cannot drag between two panels when one of
        them is not on screen. So the maker sits next to both of its targets. */
@@ -4375,11 +5149,13 @@ function closeArea(areaId) {
   if (!f || !f.parent) { toast('Last panel — nothing to close'); return; }
   pushUndo();
   const title = registry[f.node.editor].title;
-  const wasGuide = f.node.editor === 'guide';
+  /* v5.9.2 · CLOSING THE GUIDE PANEL NO LONGER SWITCHES GUIDANCE OFF. It used to,
+     because the panel WAS the guidance; now the guidance is the inline explanations
+     plus the tour, and the panel is just one more tool you may or may not want on
+     screen. Closing a panel should never change a global setting. */
   f.parent.children.splice(f.idx, 1);
   f.parent.weights.splice(f.idx, 1);
   commit('Closed ' + title + ' — neighbouring panels resized to fill the gap');
-  if (wasGuide && !allAreas.value.some(a => a.node.editor === 'guide')) { s.guide = false; document.body.classList.add('noguide'); }
 }
 
 function retarget(areaId, key) {
@@ -4461,35 +5237,507 @@ function toggleMinArea(areaId) {
   announce((f.node.min ? 'Minimised ' : 'Restored ') + registry[f.node.editor].title);
 }
 
-/* ---------- GUIDE ME THROUGH — the toggle that adds or removes all guidance ---------- */
+/* ==================================================================
+   GUIDE ME THROUGH
+   ==================================================================
+   THE TOGGLE USED TO SPEND 18% OF THE SCREEN. Switching it on pushed a
+   Guide panel into the layout — a column of prose beside the work,
+   explaining the workspace from outside the workspace. Three things were
+   wrong with that and only one of them was the width:
+
+     1 · it described panels that were on the other side of the screen,
+         so every sentence cost a saccade and a guess about which thing
+         it meant;
+     2 · it could only ever narrate what had JUST HAPPENED, which is the
+         wrong tense for somebody who has not done anything yet;
+     3 · it changed the arrangement. A setting called "explain this to me"
+         reshuffled the panels the person had arranged, and switching it
+         off reshuffled them again.
+
+   So the toggle now runs a TOUR: a layer over the app that rings one piece
+   of the interface, dims everything else to near-black, and says what the
+   ringed thing does. GOT IT advances, SKIP leaves, BACK returns, and the
+   sections can be skipped whole. It costs no width, it survives any
+   arrangement, and it is pointing AT the thing while it talks about it.
+
+   WHAT THE TOGGLE STILL DOES BESIDES. `body.noguide` is unchanged: the
+   inline `.purpose`, `.hint` and `.qr` explanations in every panel are
+   still gated on it, and they stay on after the tour ends. The tour is the
+   guided first pass; the inline copy is what is there ever after.
+
+   THE TOUR NEVER ACTS ON YOUR BEHALF. It highlights and explains; it does
+   not press the buttons it is describing. `.tour-block` swallows every
+   pointer event underneath, which is also what stops a panel being resized
+   or retargeted out from under an anchor mid-step.
+   ================================================================== */
 function setGuide(on) {
   s.guide = on;
   document.body.classList.toggle('noguide', !on);
   syncGuide(true);
-  if (on) toast('Guide on — each panel now explains what the platform just did');
+  if (on) tourStart();
+  else { tourEnd(false, true); toast('Guide off. The explanations in each panel are hidden.'); }
 }
+/* All that is left of the old behaviour: if a Guide column is sitting in a
+   layout persisted by an earlier version, switching guidance off still takes it
+   away. Nothing adds one any more — the panel is reachable from any panel
+   header like every other tool, and that is the only way it arrives. */
 function syncGuide(allowRemove) {
   const t = layouts[s.mode];
-  if (!t) return;
+  if (!t || !allowRemove || s.guide) return;
   const present = allAreas.value.filter(a => a.node.editor === 'guide');
-  if (s.guide && !present.length) {
-    const root = t.root;
-    if (root.type === 'split' && root.dir === 'row') {
-      root.children.push(mkArea('guide'));
-      root.weights = root.weights.map(w => w * 0.82).concat([0.18]);
-    } else {
-      t.root = mkSplit('row', [root, mkArea('guide')], [0.82, 0.18]);
+  if (!present.length) return;
+  present.forEach(a => {
+    const f = findNode(a.id);
+    if (f && f.parent) { f.parent.children.splice(f.idx, 1); f.parent.weights.splice(f.idx, 1); }
+  });
+  normalize(s.mode);
+  persist(s.mode);
+}
+
+/* ---------- the tour: state ---------- */
+const TOUR_SEEN = 'pctf5.tour.seen';
+const TOUR_PAD = 6;        // breathing room between the subject and the ring
+const TOUR_GAP = 14;       // between the ring and the card
+const TOUR_EDGE = 12;      // the card never comes closer than this to a screen edge
+
+const tour = reactive({
+  on: false,
+  deep: false,             // the per-task walk, in magenta, launched from a task step
+  i: 0,
+  rect: null,              // the ringed box, in viewport pixels — null means "no anchor, card centred"
+  side: 'right',           // which side of the subject the card landed on
+  card: { x: 0, y: 0 },
+  caret: 24,
+});
+const tourSteps = ref([]);
+const tourCardEl = ref(null);
+const tourStep = computed(() => tourSteps.value[tour.i] || { chapter: '', title: '', body: '' });
+const tourChapterLeft = computed(() => {
+  const list = tourSteps.value, ch = tourStep.value.chapter;
+  let n = 0;
+  for (let i = tour.i; i < list.length && list[i].chapter === ch; i++) n++;
+  return n;
+});
+const tourBoxStyle = computed(() => tour.rect
+  ? { transform: 'translate(' + tour.rect.x + 'px,' + tour.rect.y + 'px)',
+      width: tour.rect.w + 'px', height: tour.rect.h + 'px' }
+  : {});
+const tourCardStyle = computed(() => ({ transform: 'translate(' + tour.card.x + 'px,' + tour.card.y + 'px)' }));
+const tourCaretStyle = computed(() => (tour.side === 'left' || tour.side === 'right')
+  ? { top: tour.caret + 'px' } : { left: tour.caret + 'px' });
+
+/* ---------- the tour: what it says ----------
+   Built once, at the moment the toggle is pressed, rather than as a computed —
+   a list that re-filtered itself mid-tour would renumber the steps under the
+   person walking through them. A step whose subject is not on screen right now
+   is dropped here and not mentioned again: the LENS is absent in the sketch
+   stage, saved workspaces are absent until you have saved one, and neither
+   should produce a step ringing nothing. */
+function buildTourSteps() {
+  const LAND = 'The landing', PANE = 'The panels', WORK = 'Configuring the workspace', GUID = 'Guidance';
+  const steps = [
+
+    /* ---- where you have landed ---- */
+    { chapter: LAND, centre: true, title: 'Guide me through',
+      body: 'This is a walk round the workspace: what you have landed in, how the '
+          + 'panels move, and what every task button in the rail actually opens.<br><br>'
+          + '<strong>Nothing here changes your take.</strong> The tour points at things and '
+          + 'explains them, and it never presses the buttons it is describing.' },
+
+    { chapter: LAND, sel: '[data-tour="topbar"]', place: 'bottom', pad: 0, title: 'The top bar, and where you are in the job',
+      body: 'The production’s name, then the stage it is in: <strong>SKETCH, DESIGN, '
+          + 'PRODUCE, DEPLOY</strong>. The grey line beside it counts what is actually there, '
+          + 'objects in the scene now, tasks done once there is a checklist. The green button '
+          + 'only exists in SKETCH, and only unlocks once the drawing has become a scene worth producing.' },
+
+    { chapter: LAND, sel: '[data-tour="prods"]', place: 'right', title: 'Productions, the jobs',
+      body: 'A <strong>production</strong> is the job itself: the venue, the window, the owner. '
+          + 'It holds no progress and takes no decisions, because those belong to its takes. '
+          + 'You land in one called SKETCH, which is the phase before a production properly exists.' },
+
+    /* THE RULE MOVED IN HERE. It used to be a permanent block of type at the foot of
+       the rail, under the task buttons, where it was read once and then occupied the
+       column forever. It is the most important sentence in the build, so it belongs
+       on the step that is already explaining the noun it governs. */
+    { chapter: LAND, sel: '[data-tour="takes"]', place: 'right', title: 'Takes, the ways of doing it',
+      body: 'A <strong>take</strong> is a proposed way of doing the production. It carries every '
+          + 'decision, the kit, the positions, the routes, the values, and it carries its own '
+          + 'progress. Fork one to work up a second opinion. One take goes LIVE when the team has '
+          + 'validated it, and every other take keeps every bit of the progress it made.<br><br>'
+          + '<strong>A task is something you complete. A take is something you choose.</strong> '
+          + 'You never compare tasks, and you never assign a take.' },
+
+    /* ---- the panels, and that they are not fixed ---- */
+    { chapter: PANE, sel: '[data-tour="tiles"]', place: 'over', pad: -2, title: 'Every panel is the same frame',
+      body: 'There is no fixed layout in this workspace. Each panel is an identical frame with a '
+          + 'tool dropped into it, so <strong>anything can be anywhere, at any size, as many times '
+          + 'as you like</strong>. What is on screen now is just the landing arrangement: somewhere '
+          + 'to draw on the left, and the room it becomes on the right.' },
+
+    { chapter: PANE, sel: '.pc-area-hd', pick: 'first', place: 'bottom', title: 'The panel header',
+      body: 'Every panel carries the same controls in the same order: the menu, which take it is '
+          + 'showing, what tool it is, minimise, close. Nothing in this header touches the take, '
+          + 'it only changes what you are looking at.' },
+
+    { chapter: PANE, sel: '.pc-ed-select', pick: 'first', place: 'bottom', title: 'Any panel can become any tool',
+      body: 'This dropdown retargets the frame in place. Every tool in the build is in it, grouped '
+          + 'by what it is for. That is why no tool needs a home of its own: you put it where you '
+          + 'want it, at the size you want it, and swap it away when you are done with it.' },
+
+    { chapter: PANE, sel: '.pc-take-select', pick: 'first', place: 'bottom', title: 'Recall another take, in one panel',
+      body: 'Point a single panel at a different take of the same production and it renders that '
+          + 'take instead, <strong>read-only, and tagged</strong>. It is how you check one thing '
+          + 'against the option you did not take without leaving the one you are in.' },
+
+    { chapter: PANE, sel: '.pc-gutter', pick: 'first', place: 'right', pad: 10, title: 'Drag any edge to resize',
+      body: 'Every line between two panels is a handle. Drag it to re-weight the split, '
+          + 'double-click it to divide the space evenly, or focus it and use the arrow keys. '
+          + 'It snaps as it passes the useful ratios.' },
+
+    { chapter: PANE, sel: '.pc-area', pick: 'first', place: 'right', title: 'Drag a corner to split or merge',
+      body: 'The four corners of a panel are the layout gestures. Pull one inwards and the panel '
+          + '<strong>splits</strong> in two. Push it out over a neighbour and the two '
+          + '<strong>merge</strong>. The overlay shows the ratio and the direction before you let go, '
+          + 'and Ctrl+Z puts any of it back.' },
+
+    { chapter: PANE, sel: '.pc-area-hd .pc-iconbtn', pick: 'first', place: 'bottom', pad: 4, title: 'The panel menu',
+      body: 'The same gestures as words, plus swap, which exchanges two panels without resizing '
+          + 'either, and maximise. <strong>Reset</strong> is the way back: it returns the '
+          + 'arrangement to the panels this workspace ships with, and it knows whether that means '
+          + 'a task’s cluster or the checklist’s.' },
+
+    /* ---- configuring the workspace ---- */
+    { chapter: WORK, sel: '[data-tour="lens"]', place: 'right', title: 'Working on, the lens',
+      body: 'What the platform believes you are doing, inferred from what the checklist holds. '
+          + 'It changes what is <strong>featured</strong>, never what is true, and every panel '
+          + 'stays reachable from a panel header whatever it is set to.' },
+
+    { chapter: WORK, sel: '[data-tour="tasks"]', place: 'right', title: 'What are you doing?',
+      body: 'Twelve jobs somebody sits down to do. Each one is <strong>its own workspace</strong>, '
+          + 'with its own arrangement remembered separately, so moving between them costs nothing '
+          + 'and never loses what you set up.<br><br>Pressing one <strong>moves panels and nothing '
+          + 'else</strong>, not the take, not the checklist, not a selection, not a clip, not the '
+          + 'playhead. Here is what each of them opens.' },
+
+  ];
+
+  /* A LIST OF NAMES IS NOT AN EXPLANATION. These steps used to end on "Opens:
+     Timeline, AI Content, Content Bin, Video Preview" — four things somebody being
+     walked round the workspace for the first time has never seen, named but not
+     explained. Each panel now brings its own clause out of the registry, so the
+     question the step answers is the one actually being asked: what will be in
+     front of me when I press this. */
+  TASKS.forEach(t => steps.push({
+    chapter: WORK, sel: '[data-tour-task="' + t.key + '"]', place: 'right', pad: 4,
+    title: t.label,
+    body: t.why,
+    opens: t.panels.map(k => ({ key: k, title: (registry[k] || {}).title || k, does: (registry[k] || {}).does || '' })),
+    deepTask: t.key,
+  }));
+
+  steps.push(
+    { chapter: WORK, sel: '[data-tour="mine"]', place: 'right', pad: 4, title: 'Save mine, your own workspace',
+      body: 'The last square saves whatever you have on screen under a name, and it joins the '
+          + 'column above. A task button is the product’s answer to "what do people do", and a '
+          + 'saved workspace is <strong>your</strong> answer to "what do I do". It can be dropped '
+          + 'onto any take. Yours wear violet, so you can always tell which of these buttons would '
+          + 'exist on somebody else’s machine.' },
+
+    /* ---- and what the toggle leaves behind ---- */
+    { chapter: GUID, sel: '[data-tour="gtoggle"]', place: 'bottom', title: 'This toggle',
+      body: 'Guidance is now <strong>on</strong>. Every panel carries a line saying what it is for, '
+          + 'the hints under the controls are showing, and the reveal questions are open. Switch it '
+          + 'off to hide all of that, and switch it on again to run this tour from the top.' },
+
+    { chapter: GUID, sel: '[data-tour="concepts"]', place: 'bottom', title: 'Concepts',
+      body: 'Fifteen ideas this platform is built on. They tick off <strong>as you meet them in the '
+          + 'work</strong> rather than as you read about them, so do the thing and the one it '
+          + 'demonstrates lights up. The Guide panel, in any panel’s tool dropdown, lists them.' },
+
+    { chapter: GUID, centre: true, title: 'That is the workspace',
+      body: 'Draw something in the Sketch Pad, or drop a reference in beside it, and accept what the '
+          + 'agent proposes off it. When the drawing has become a scene worth producing, press '
+          + 'START PRODUCTION, and <strong>the checklist builds itself out of what you drew</strong>.' },
+  );
+
+  return steps.filter(st => st.centre || tourEls(st).length);
+}
+
+/* ---------- the tour: finding and measuring the subject ---------- */
+function tourEls(st) {
+  if (!st || !st.sel) return [];
+  const found = Array.prototype.slice.call(document.querySelectorAll(st.sel))
+    .filter(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  return st.pick === 'first' ? found.slice(0, 1) : found;
+}
+/* the union of everything the selector matched, so a step can ring a BLOCK of the
+   rail — a heading, its rows and the button under them — without any of them
+   having to be wrapped in a box that exists only for this */
+function tourUnion(els) {
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  els.forEach(el => {
+    const q = el.getBoundingClientRect();
+    if (!q.width && !q.height) return;
+    l = Math.min(l, q.left); t = Math.min(t, q.top);
+    r = Math.max(r, q.right); b = Math.max(b, q.bottom);
+  });
+  return l === Infinity ? null : { x: l, y: t, w: r - l, h: b - t };
+}
+
+function tourMeasure() {
+  if (!tour.on) return;
+  const st = tourStep.value;
+  if (st.centre) { tourSetRect(null); tourPlace(null, st); return; }
+  const raw = tourUnion(tourEls(st));
+  if (!raw) { tourSetRect(null); tourPlace(null, st); return; }
+  const pad = st.pad == null ? TOUR_PAD : st.pad;
+  const box = { x: raw.x - pad, y: raw.y - pad, w: raw.w + pad * 2, h: raw.h + pad * 2 };
+  /* clip to the viewport, so a subject that is half off the bottom of a scrolling
+     rail still rings the half of it you can see rather than a box in mid-air */
+  const x = Math.max(0, box.x), y = Math.max(0, box.y);
+  box.w = Math.min(box.x + box.w, innerWidth) - x;
+  box.h = Math.min(box.y + box.h, innerHeight) - y;
+  box.x = x; box.y = y;
+  if (box.w <= 0 || box.h <= 0) { tourSetRect(null); tourPlace(null, st); return; }
+  tourSetRect(box);
+  tourPlace(box, st);
+}
+/* the measure runs every frame while the tour is up — panels animate, the rail
+   scrolls, the window resizes — so every write is guarded on an actual change or
+   Vue would re-render sixty times a second for nothing */
+function tourSetRect(b) {
+  const r = tour.rect;
+  if (!r && !b) return;
+  if (r && b && Math.abs(r.x - b.x) < 0.5 && Math.abs(r.y - b.y) < 0.5
+           && Math.abs(r.w - b.w) < 0.5 && Math.abs(r.h - b.h) < 0.5) return;
+  tour.rect = b;
+}
+function tourPlace(box, st) {
+  const el = tourCardEl.value;
+  const cw = (el && el.offsetWidth) || 330;
+  const ch = (el && el.offsetHeight) || 240;
+  let side = 'over', x, y;
+
+  if (box) {
+    const room = {
+      right:  innerWidth - (box.x + box.w) - TOUR_GAP - TOUR_EDGE,
+      left:   box.x - TOUR_GAP - TOUR_EDGE,
+      bottom: innerHeight - (box.y + box.h) - TOUR_GAP - TOUR_EDGE,
+      top:    box.y - TOUR_GAP - TOUR_EDGE,
+    };
+    const need = { right: cw, left: cw, bottom: ch, top: ch };
+    /* `in` is the per-task walk's preference: when the subject is a whole panel with
+       room to spare, the explanation belongs INSIDE it rather than pointing at it from
+       the next panel along, which is where a caret would otherwise land. Falls back to
+       the normal search the moment the panel is too small to hold the card. */
+    const fitsIn = st.place === 'in' && box.w >= cw + 28 && box.h >= ch + 28;
+    if (st.place === 'over' || fitsIn) side = 'over';
+    else {
+      const order = ['right', 'bottom', 'left', 'top'];
+      if (st.place && st.place !== 'over' && st.place !== 'in') order.unshift(st.place);
+      side = order.find(k => room[k] >= need[k]) || 'over';
     }
-    normalize(s.mode);
-    persist(s.mode);
-  } else if (allowRemove && !s.guide && present.length) {
-    present.forEach(a => {
-      const f = findNode(a.id);
-      if (f && f.parent) { f.parent.children.splice(f.idx, 1); f.parent.weights.splice(f.idx, 1); }
-    });
-    normalize(s.mode);
-    persist(s.mode);
   }
+
+  if (!box || side === 'over') {
+    /* nothing fits beside it — which is the normal answer for a subject the size of
+       the whole tile field. Centre the card ON it: the subject is the whole area, so
+       covering some of it costs nothing and the ring still frames what is meant. */
+    const f = box || { x: 0, y: 0, w: innerWidth, h: innerHeight };
+    x = f.x + f.w / 2 - cw / 2;
+    y = f.y + f.h / 2 - ch / 2;
+  } else if (side === 'right')  { x = box.x + box.w + TOUR_GAP; y = box.y + box.h / 2 - ch / 2; }
+  else if (side === 'left')     { x = box.x - TOUR_GAP - cw;    y = box.y + box.h / 2 - ch / 2; }
+  else if (side === 'bottom')   { y = box.y + box.h + TOUR_GAP; x = box.x + box.w / 2 - cw / 2; }
+  else                          { y = box.y - TOUR_GAP - ch;    x = box.x + box.w / 2 - cw / 2; }
+
+  x = Math.max(TOUR_EDGE, Math.min(x, innerWidth - cw - TOUR_EDGE));
+  y = Math.max(TOUR_EDGE, Math.min(y, innerHeight - ch - TOUR_EDGE));
+
+  /* the caret chases the middle of the subject after the card has been clamped, so
+     it keeps pointing at the thing even when the card could not sit opposite it */
+  let caret = 24;
+  if (box && side !== 'over') {
+    caret = (side === 'left' || side === 'right')
+      ? Math.max(14, Math.min(box.y + box.h / 2 - y - 5, ch - 20))
+      : Math.max(14, Math.min(box.x + box.w / 2 - x - 5, cw - 20));
+  }
+  if (tour.side !== side) tour.side = side;
+  if (Math.abs(tour.caret - caret) > 0.5) tour.caret = caret;
+  if (Math.abs(tour.card.x - x) > 0.5 || Math.abs(tour.card.y - y) > 0.5) { tour.card.x = x; tour.card.y = y; }
+}
+
+/* ==================================================================
+   THE SECOND TOUR — one task's workspace, panel by panel
+   ==================================================================
+   The main tour gets through twelve task buttons by saying what each one opens.
+   That is the right depth for a walk round the whole product and the wrong depth
+   for the moment somebody has decided THIS is the job they are doing: at that
+   point they do not want four panel names, they want to know what each panel is,
+   what they do in it, and the thing about it that is not obvious from looking.
+
+   So every task step carries a hand-off. EXPLAIN TASK WORKSPACE applies the task,
+   which is not a liberty but the whole point: you cannot ring a panel that is not
+   on screen, and `applyTask` moves panels and touches nothing else. The walk then
+   rings each panel of that task in turn, in magenta, so there is never a moment
+   where the two tours could be confused for one another.
+
+   AND IT PUTS THE WORKSPACE BACK. The arrangement you were in before pressing the
+   CTA is remembered, and BACK TO THE TOUR restores it and resumes the main tour on
+   the step you left. STAY IN THIS WORKSPACE is the other answer, for when the walk
+   has convinced you and the panels are where you want to be.
+   ================================================================== */
+let tourStash = null;      // { i, steps, task, preset, mode } — plain, not reactive: the
+                           // step list must not renumber itself while it is parked
+
+function buildDeepSteps(t) {
+  const chapter = t.label.toUpperCase() + ' WORKSPACE';
+  const steps = [
+    { chapter, sel: '[data-tour="tiles"]', place: 'over', pad: -2,
+      title: 'The ' + t.label + ' workspace',
+      body: '<strong>' + t.why + '</strong><br><br>These panels are here because you cannot '
+          + 'do this job while looking at only some of them. They are laid out lead first, then '
+          + 'the ones you work in, then the ones you refer to. Move, resize or swap any of them, '
+          + 'and RESET in any panel menu brings this arrangement back.' },
+  ];
+  t.panels.forEach(k => {
+    const r = registry[k] || {};
+    const d = r.deep || {};
+    steps.push({ chapter, sel: '[data-tour-panel="' + k + '"]', pick: 'first', place: 'in',
+                 title: r.title || k, body: d.lead || r.does || '',
+                 fig: d.fig ? TOUR_FIG[d.fig] : null, bullets: d.bullets || null, foot: d.foot || '' });
+  });
+  steps.push({ chapter, centre: true, title: 'That is ' + t.label,
+               body: 'Nothing in the take changed while you walked through this. The panels moved, '
+                   + 'and that is all a task button has ever done.<br><br><strong>Back to the tour</strong> '
+                   + 'puts the workspace you had back and carries on where you were. '
+                   + '<strong>Stay in this workspace</strong> keeps these panels and closes the guide.' });
+  return steps.filter(st => st.centre || tourEls(st).length);
+}
+
+function tourDeep(key) {
+  const t = TASK_BY_KEY[key];
+  if (!t || !take.value) return;
+  tourStash = { i: tour.i, steps: tourSteps.value, task: s.task, preset: s.preset, mode: s.mode };
+  applyTask(key, true);
+  /* two ticks: one for the layout tree to change, one for the areas to be laid out
+     and measured, because a panel with no rect yet is a step that filters itself out */
+  nextTick(() => nextTick(() => {
+    const steps = buildDeepSteps(t);
+    if (!steps.length) { toast('Nothing to walk through in that workspace yet.'); return; }
+    tourSteps.value = steps;
+    tour.i = 0;
+    tour.deep = true;
+    tour.rect = null;
+    nextTick(tourReveal);
+  }));
+}
+/* restoring an arrangement is not applyTask in reverse: the workspace you were in may
+   have been a saved one, or the landing, neither of which is a task. The mode key is
+   what identifies a layout, so putting the three fields back and re-marking the mode
+   live is the whole of it. */
+function tourBackToMain() {
+  const r = tourStash;
+  tourStash = null;
+  tour.deep = false;
+  if (r && layouts[r.mode]) {
+    s.task = r.task; s.preset = r.preset; s.mode = r.mode;
+    maximizedId.value = null; menuFor.value = null;
+    keepAlive(s.mode);
+  }
+  nextTick(() => {
+    if (r && r.steps && r.steps.length) { tourSteps.value = r.steps; tour.i = Math.min(r.i, r.steps.length - 1); }
+    else { tourSteps.value = buildTourSteps(); tour.i = 0; }
+    tour.rect = null;
+    nextTick(tourReveal);
+  });
+}
+function tourStayHere() {
+  tourStash = null;
+  const label = tourStep.value.chapter.replace(' WORKSPACE', '');
+  tourEnd(true, true);
+  toast(label + ' is the workspace you are in now. Nothing in the take changed, and GUIDE ME THROUGH off and on runs the tour again.');
+}
+
+/* ---------- the tour: running it ---------- */
+let tourRaf = 0;
+function tourLoop() {
+  if (!tour.on) { tourRaf = 0; return; }
+  tourMeasure();
+  tourRaf = requestAnimationFrame(tourLoop);
+}
+function tourKey(e) {
+  if (!tour.on) return;
+  const k = e.key;
+  /* in the per-task walk, Escape is the gentle exit: back to the tour, with the
+     arrangement you came from restored. Leaving the whole guide takes a deliberate
+     press of one of the two answers on the last step. */
+  if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); if (tour.deep) tourBackToMain(); else tourEnd(false); }
+  else if (k === 'Enter' || k === 'ArrowRight' || k === ' ' || k === 'Spacebar') { e.preventDefault(); e.stopPropagation(); tourNext(); }
+  else if (k === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); tourBack(); }
+}
+function tourStart() {
+  menuFor.value = null;
+  tour.i = 0;
+  tour.rect = null;
+  /* THE STEPS ARE BUILT A TICK LATE, DELIBERATELY. `s.guide` has only just become
+     true, and the things that exist BECAUSE it is true — the concepts counter in the
+     top bar, the inline hints in every panel — are not in the DOM until Vue has
+     re-rendered. Building the list synchronously here silently dropped the steps
+     that point at them, because a step whose subject is not on screen is filtered
+     out and the subject had not arrived yet. */
+  nextTick(() => {
+    const steps = buildTourSteps();
+    if (!steps.length) { toast('Guide on. Each panel now explains what it is for.'); return; }
+    tourSteps.value = steps;
+    tour.on = true;
+    window.addEventListener('keydown', tourKey, true);
+    nextTick(() => { tourReveal(); if (!tourRaf) tourRaf = requestAnimationFrame(tourLoop); });
+  });
+}
+/* the rail and the task column both scroll, so a subject three-quarters of the way
+   down either of them has to be brought into view before it can be ringed */
+function tourReveal() {
+  const el = tourEls(tourStep.value)[0];
+  if (el && el.scrollIntoView) {
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    /* `nearest` is the least disruptive scroll there is, and at either end of a
+       scrolling column it is also the one that parks the subject flush against the
+       edge of the screen with nowhere to put the ring or the card. That is the only
+       case worth the bigger move. */
+    const q = el.getBoundingClientRect();
+    if (q.top < 10 || q.bottom > innerHeight - 10) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }
+  tourMeasure();
+}
+function tourGo(i) {
+  tour.i = Math.max(0, Math.min(i, tourSteps.value.length - 1));
+  nextTick(tourReveal);
+}
+function tourNext() {
+  if (tour.i >= tourSteps.value.length - 1) { tourEnd(true); return; }
+  tourGo(tour.i + 1);
+}
+function tourBack() { if (tour.i > 0) tourGo(tour.i - 1); }
+function tourSkipChapter() {
+  const list = tourSteps.value, ch = tourStep.value.chapter;
+  let i = tour.i;
+  while (i < list.length && list[i].chapter === ch) i++;
+  if (i >= list.length) tourEnd(true); else tourGo(i);
+}
+/* `quiet` is the one case that says nothing: the toggle being switched OFF ends the
+   tour as a side effect, and it has its own toast to give */
+function tourEnd(done, quiet) {
+  if (!tour.on) return;
+  tour.on = false;
+  tour.deep = false;
+  tourStash = null;
+  tour.rect = null;
+  window.removeEventListener('keydown', tourKey, true);
+  try { localStorage.setItem(TOUR_SEEN, '1'); } catch (e) {}
+  if (quiet) return;
+  toast((done ? 'Tour finished. ' : 'Tour skipped. ')
+    + 'The explanations stay on in every panel, and switching GUIDE ME THROUGH off and on runs it again.');
 }
 
 /* ==================================================================
@@ -4621,7 +5869,7 @@ function layoutStacked(list) {
    none of it lives in the layout tree. Panels that are already open are re-created
    rather than moved, which reloads their iframes; the media panels restore
    themselves from the host on the way back up, which is what makes that safe. */
-function applyTask(key) {
+function applyTask(key, quiet) {
   const tk = take.value;
   if (!tk) { toast('Open a take first'); return; }
   const t = TASK_BY_KEY[key];
@@ -4640,7 +5888,7 @@ function applyTask(key) {
   keepAlive(s.mode);
   syncGuide();
   learn('layout');
-  toast(t.label + ' — ' + (first
+  if (!quiet) toast(t.label + ' — ' + (first
           ? t.panels.map(p => registry[p].title).join(' · ')
           : 'your arrangement, as you left it')
         + '. Nothing in the take has changed.');
@@ -5040,6 +6288,11 @@ const SB = {
   xyzLabels, xyzSlot, calLabels, toast, worldPosOf,
   PROJECTOR_LIB, CAMERA_LIB, LIB, addDevice, inScene, thumbOf,
   setGuide, toggleMinArea, minList, costOf, money,
+  /* GUIDE ME THROUGH — the tour layer */
+  tour, tourSteps, tourStep, tourChapterLeft, tourCardEl,
+  tourBoxStyle, tourCardStyle, tourCaretStyle,
+  tourNext, tourBack, tourSkipChapter, tourEnd,
+  tourDeep, tourBackToMain, tourStayHere,
   bindTake, isBound, takeName, askDelete, confirmDelete, dialog,
   registryGroups, swap, startSwap, swapPanels,
   posOf, moveObject, removeObject, duplicateObject, relabel,
